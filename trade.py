@@ -1,5 +1,9 @@
 
+######################################################
 
+############# Single Trade CLASS ######################
+
+######################################################
 
 class Trade:
     def __init__(self, broker: str, ticker: str, quantity: float, price: float, trade_type: str, date:str):
@@ -66,12 +70,18 @@ class Trade:
 
 
 
+######################################################
+
+############# Multi Trade CLASS ######################
+
+######################################################
 
 
 class Trades:
-    def __init__(self):
+    def __init__(self, cash: float):
         self.trades = []
         self.concatenated_trades = {}
+        self.cash = cash
 
 
     def add_trade_in_list(self, trade: Trade):
@@ -86,6 +96,7 @@ class Trades:
                 self.concatenated_trades[trade.ticker]["quantity"] += trade.quantity
             else :
                 self.concatenated_trades[trade.ticker]["quantity"] -= trade.quantity
+                self.cash += trade.quantity*trade.price
                 if self.concatenated_trades[trade.ticker]["quantity"]<0:
                     print("Error in the trade, we can't be short on this ticker")
                 #in this case the average buying price is unchanged, to be checked
@@ -97,10 +108,16 @@ class Trades:
 
     def update_book(self, trade : Trade):
         """Update the book with a new trade."""
+        self.cash -= trade.quantity*trade.price
+        if self.cash<0:
+            raise "Issue with cash value. Can't get negative amount of cash"
         self.get_trade_pnl(trade)
         self.add_trade_in_list(trade)
         self.add_trade_in_concatenated(trade) 
 
+    def get_cash(self):
+        return self.cash
+    
     def get_trade_pnl(self, trade : Trade):
         if trade.trade_type == 'sell':
             trade.pnl = trade.quantity * (trade.price - self.concatenated_trades[trade.ticker]["price"])
