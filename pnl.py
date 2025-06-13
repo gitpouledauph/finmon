@@ -13,9 +13,10 @@ and percentages)
 '''
 
 from trade import Trade, Trades
+import pandas as pd 
 
 class PnL:
-    def __init__(self, book : Trades):
+    def __init__(self, book : Trades, date: str):
         self.book = book.concatenated_trades
         self.trades = book.trades
         self.unrealized_pnl = 0
@@ -23,6 +24,7 @@ class PnL:
         self.pos_abs_pnl_dic = {a:0 for a in self.book.keys()}
         self.pos_rel_pnl_dic = {a:0 for a in self.book.keys()}
         self.unrealized_pnl = 0
+        self.pnl_date = date
 
 
 
@@ -42,7 +44,7 @@ class PnL:
 
     def get_pos_value(self):
         for ticker, pos in self.book.items():
-            live_value = 1 #to update with a live retriever such as yfinance
+            live_value = 1 #to update with a live retriever such as yfinance using self.pnl_date
             pos_value = pos.quantity*live_value
         return pos_value
 
@@ -65,4 +67,24 @@ class PnL:
     def get_realized_pnl(self):
         self.compute_realized_pnl()
         return self.realized_pnl
+    
 
+    def book_to_logs(self):
+        dico = {
+            "Date": self.pnl_date,
+            "Cash Value": self.get_available_cash(),
+            "Realized Pnl": self.realized_pnl,
+            "Unrealized PnL": self.unrealized_pnl,
+            "Book Value": self.get_pos_value(),
+            "Full PnL": self.get_full_pnl(),
+            }
+
+        pass
+
+    def pos_to_logs(self):
+        dico = {
+            "Pos Abs PnL": self.pos_abs_pnl_dic,
+            "Pos Rel PnL": self.pos_rel_pnl_dic,
+            }
+
+        pass
