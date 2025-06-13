@@ -1,5 +1,15 @@
 ######################################################
 
+#################### IMPORTS ########################
+
+#####################################################
+
+
+from trade import Trade, Trades
+import pandas as pd 
+
+######################################################
+
 #################### PNL CLASS ######################
 
 #####################################################
@@ -12,13 +22,13 @@ and percentages)
 
 '''
 
-from trade import Trade, Trades
-import pandas as pd 
+
 
 class PnL:
     def __init__(self, book : Trades, date: str):
-        self.book = book.concatenated_trades
-        self.trades = book.trades
+        self.book_object = book
+        self.book = self.book_object.concatenated_trades
+        self.trades = self.book_object.trades
         self.unrealized_pnl = 0
         self.realized_pnl = 0
         self.pos_abs_pnl_dic = {a:0 for a in self.book.keys()}
@@ -29,6 +39,7 @@ class PnL:
 
 
     def compute_realized_pnl(self):
+        self.realized_pnl = 0
         for trade in self.trades:
             if trade.trade_type == 'sell':
                 self.realized_pnl += trade.pnl
@@ -37,15 +48,15 @@ class PnL:
     def compute_unrealized_pnl(self):
         for ticker, pos in self.book.items():
             live_value = 1 #to update with a live retriever such as yfinance
-            pos_pnl = pos.quantity *(live_value - pos.price)
+            pos_pnl = pos['quantity'] *(live_value - pos['price'])
             self.pos_abs_pnl_dic[ticker] = pos_pnl
             self.unrealized_pnl += pos_pnl
-            self.pos_rel_pnl_dic[ticker] = pos_pnl/ (pos.price * pos.quantity) if pos.price * pos.quantity != 0 else 0
+            self.pos_rel_pnl_dic[ticker] = pos_pnl/ (pos['price'] * pos['quantity']) if pos['price'] * pos['quantity'] != 0 else 0
 
     def get_pos_value(self):
         for ticker, pos in self.book.items():
             live_value = 1 #to update with a live retriever such as yfinance using self.pnl_date
-            pos_value = pos.quantity*live_value
+            pos_value = pos['quantity']*live_value
         return pos_value
 
     
@@ -57,7 +68,7 @@ class PnL:
 
 
     def get_available_cash(self):
-        return self.book.cash
+        return self.book_object.get_cash()
 
     def get_unrealized_pnl(self):
         self.compute_unrealized_pnl()
@@ -79,7 +90,7 @@ class PnL:
             "Full PnL": self.get_full_pnl(),
             }
 
-        pass
+        return dico
 
     def pos_to_logs(self):
         dico = {
@@ -87,4 +98,4 @@ class PnL:
             "Pos Rel PnL": self.pos_rel_pnl_dic,
             }
 
-        pass
+        return dico

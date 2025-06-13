@@ -96,7 +96,6 @@ class Trades:
                 self.concatenated_trades[trade.ticker]["quantity"] += trade.quantity
             else :
                 self.concatenated_trades[trade.ticker]["quantity"] -= trade.quantity
-                self.cash += trade.quantity*trade.price
                 if self.concatenated_trades[trade.ticker]["quantity"]<0:
                     print("Error in the trade, we can't be short on this ticker")
                 #in this case the average buying price is unchanged, to be checked
@@ -108,9 +107,12 @@ class Trades:
 
     def update_book(self, trade : Trade):
         """Update the book with a new trade."""
-        self.cash -= trade.quantity*trade.price
+        if trade.trade_type == "buy":
+            self.cash -= trade.quantity*trade.price
+        else:
+            self.cash += trade.quantity*trade.price
         if self.cash<0:
-            raise "Issue with cash value. Can't get negative amount of cash"
+            print("Issue with cash value. Can't get negative amount of cash")
         self.get_trade_pnl(trade)
         self.add_trade_in_list(trade)
         self.add_trade_in_concatenated(trade) 
@@ -121,6 +123,7 @@ class Trades:
     def get_trade_pnl(self, trade : Trade):
         if trade.trade_type == 'sell':
             trade.pnl = trade.quantity * (trade.price - self.concatenated_trades[trade.ticker]["price"])
+        
 
     def get_trades(self):
         return self.trades
