@@ -2,13 +2,14 @@
 
 
 class Trade:
-    def __init__(self, broker, ticker, quantity, price, trade_type, date):
+    def __init__(self, broker: str, ticker: str, quantity: float, price: float, trade_type: str, date:str):
         self.broker = broker
         self.ticker = ticker
         self.quantity = quantity
         self.price = price
         self.trade_type = trade_type  # 'buy' or 'sell'
         self.date = date
+        self.pnl = - self.quantity*self.price if self.trade_type=='buy' else 0
 
     def get_trade_info(self):
         return {
@@ -17,13 +18,17 @@ class Trade:
             "Quantity": self.quantity,
             "Price": self.price,
             "Trade Type": self.trade_type,
-            "Date": self.date
+            "Date": self.date,
+            "PnL": self.pnl
         }
     def __str__(self):
-        return f"Trade({self.broker}, {self.ticker}, {self.quantity}, {self.price}, {self.trade_type}, {self.date})"
+        return f"Trade({self.broker}, {self.ticker}, {self.quantity}, {self.price}, {self.trade_type}, {self.date}, {self.pnl})"
+    
     def __repr__(self):
         return self.__str__()
+    
     def __eq__(self, other):
+        """Test equality of two trades, useful to raise warnings"""
         if not isinstance(other, Trade):
             return False
         return (self.broker == other.broker and
@@ -32,8 +37,10 @@ class Trade:
                 self.price == other.price and
                 self.trade_type == other.trade_type and
                 self.date == other.date)
+    
     def __hash__(self):
-        return hash((self.broker, self.ticker, self.quantity, self.price, self.trade_type, self.date))
+        return hash((self.broker, self.ticker, self.quantity, self.price, self.trade_type, self.date, self.pnl))
+    
     def to_dict(self):
         return {
             "broker": self.broker,
@@ -41,7 +48,8 @@ class Trade:
             "quantity": self.quantity,
             "price": self.price,
             "trade_type": self.trade_type,
-            "date": self.date
+            "date": self.date,
+            "PnL": self.pnl
         }
     @classmethod
     def from_dict(cls, trade_dict):
@@ -51,7 +59,8 @@ class Trade:
             quantity=trade_dict["quantity"],
             price=trade_dict["price"],
             trade_type=trade_dict["trade_type"],
-            date=trade_dict["date"]
+            date=trade_dict["date"],
+            pnl=trade_dict['PnL']
         )
     
 
@@ -64,25 +73,37 @@ class Trades:
         self.trades = []
         self.concatenated_trades = {}
 
-    def add_trade(self, trade: Trade):
+
+    def add_trade_in_list(self, trade: Trade):
         self.trades.append(trade)
-        
-    def update_live_book(self, trade : Trade):
-        """Update the book with a new trade."""
-        if trade not in self.trades:
-            self.concatenated_trades[trade.ticker] = {"quantity": trade.quantity, "price": trade.price, "broker": trade.broker}
-        else:
-            to_update_trade = self.get_trade_by_ticker_book(trade.ticker)
+
+    def add_trade_in_concatenated(self, trade : Trade):
+        """Add a trade to the concatenated trades dictionary."""
+        if trade.ticker in self.concatenated_trades:
             if trade.trade_type == 'buy':
-                to_update_trade.quantity += trade.quantity
-            #for the moment not allowed to sell more than you have, to be short
-            elif trade.trade_type == 'sell':
-                if to_update_trade.quantity < trade.quantity:
-                    raise ValueError("Cannot sell more than you have in the book.")
-                to_update_trade.quantity -= trade.quantity
-            self.concatenated_trades[trade.ticker] = to_update_trade
-            
-                
+                self.concatenated_trades[trade.ticker]["price"] = (trade.price  * trade.quantity + self.concatenated_trades[trade.ticker]['price']*self.concatenated_trades[trade.ticker]['quantity'])/(trade.quantity+self.concatenated_trades[trade.ticker]['quantity']) #compute the price with the average price
+
+                self.concatenated_trades[trade.ticker]["quantity"] += trade.quantity
+            else :
+                self.concatenated_trades[trade.ticker]["quantity"] -= trade.quantity
+                if self.concatenated_trades[trade.ticker]["quantity"]<0:
+                    print("Error in the trade, we can't be short on this ticker")
+                #in this case the average buying price is unchanged, to be checked
+        else : 
+            if trade.trade_type == 'buy':
+                self.concatenated_trades[trade.ticker] = {"quantity": trade.quantity, "price": trade.price, "broker": trade.broker}
+            else : 
+                print("Error in the trade, we can't be short on this ticker")
+
+    def update_book(self, trade : Trade):
+        """Update the book with a new trade."""
+        self.get_trade_pnl(trade)
+        self.add_trade_in_list(trade)
+        self.add_trade_in_concatenated(trade) 
+
+    def get_trade_pnl(self, trade : Trade):
+        if trade.trade_type == 'sell':
+            trade.pnl = trade.quantity * (trade.price - self.concatenated_trades[trade.ticker]["price"])
 
     def get_trades(self):
         return self.trades
