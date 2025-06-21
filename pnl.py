@@ -7,6 +7,7 @@
 
 from trade import Trade, Trades
 import pandas as pd 
+import os
 
 ######################################################
 
@@ -99,3 +100,23 @@ class PnL:
             }
 
         return dico
+    
+    def export_to_csv(self, path="/Users/me/Desktop/Monitoring_Investments/book.csv"):
+        # Export book_to_logs
+        new_book_df = pd.DataFrame([self.book_to_logs()])
+        if os.path.exists(path):
+            existing_book_df = pd.read_csv(path)
+            combined_book_df = pd.concat([existing_book_df, new_book_df], ignore_index=True)
+        else:
+            combined_book_df = new_book_df
+        combined_book_df.to_csv(path, index=False)
+
+        # Export pos_to_logs
+        pos_path = path.replace(".csv", "_pos.csv")
+        new_pos_df = pd.DataFrame([self.pos_to_logs()])
+        if os.path.exists(pos_path):
+            existing_pos_df = pd.read_csv(pos_path)
+            combined_pos_df = pd.concat([existing_pos_df, new_pos_df], ignore_index=True)
+        else:
+            combined_pos_df = new_pos_df
+        combined_pos_df.to_csv(pos_path, index=False)

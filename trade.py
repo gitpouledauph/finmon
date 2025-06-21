@@ -4,8 +4,77 @@
 ############# Single Trade CLASS ######################
 
 ######################################################
+from datetime import datetime
+import pandas as pd
 
 class Trade:
+    def __init__(self, broker, ticker, quantity, price, trade_type):
+        self.date = datetime.now().date()
+        self.broker = broker
+        self.ticker = ticker
+        self.quantity = quantity
+        self.price = price
+        self.trade_type = trade_type  # "buy" ou "sell"
+        self.pnl = 0.0  # sera calculé plus tard
+
+class Book:
+    def __init__(self):
+        self.trades = []
+        self.positions = {}
+        self.concatenated_trades = {}
+
+    def update_book(self, trade):
+        self.get_trade_pnl(trade)
+        self.trades.append(trade)
+        self.update_positions(trade)
+
+    def update_positions(self, trade):
+        ticker = trade.ticker
+        sign = 1 if trade.trade_type == "buy" else -1
+        qty = sign * trade.quantity
+
+        if ticker not in self.positions:
+            self.positions[ticker] = {"quantity": 0, "avg_price": 0.0}
+
+        pos = self.positions[ticker]
+        pos["quantity"] += qty
+
+        if pos["quantity"] == 0:
+            pos["avg_price"] = 0.0
+        elif trade.trade_type == "buy":
+            # weighted average price
+            total_cost = pos["avg_price"] * (pos["quantity"] - qty) + trade.price * trade.quantity
+            pos["avg_price"] = total_cost / pos["quantity"]
+
+    def get_trade_pnl(self, trade):
+        if trade.ticker in self.concatenated_trades:
+            ref_price = self.concatenated_trades[trade.ticker]["price"]
+            trade.pnl = trade.quantity * (trade.price - ref_price)
+        else:
+            trade.pnl = 0.0
+        self.concatenated_trades[trade.ticker] = {"price": trade.price}
+
+    @property
+    def daily_pnl(self):
+        if not self.trades:
+            return pd.DataFrame()
+
+        pnl_records = []
+        for t in self.trades:
+            pnl_records.append({
+                "date": t.date,
+                "ticker": t.ticker,
+                "pnl": t.pnl
+            })
+
+        df = pd.DataFrame(pnl_records)
+        if df.empty:
+            return pd.DataFrame()
+
+        grouped = df.groupby(["date", "ticker"]).sum().reset_index()
+        return grouped.pivot(index="date", columns="ticker", values="pnl").fillna(0).cumsum()
+
+'''class Trade:
     def __init__(self, broker: str, ticker: str, quantity: float, price: float, trade_type: str, date:str):
         self.broker = broker
         self.ticker = ticker
@@ -66,7 +135,7 @@ class Trade:
             date=trade_dict["date"],
             pnl=trade_dict['PnL']
         )
-    
+ '''   
 
 
 
@@ -86,6 +155,31 @@ class Trades:
 
     def add_trade_in_list(self, trade: Trade):
         self.trades.append(trade)
+
+    @property
+    def positions(self):
+        return self.concatenated_trades
+    
+    @property
+    def daily_pnl(self):
+        if not self.trades:
+            return pd.DataFrame()
+
+        pnl_records = []
+        for t in self.trades:
+            pnl_records.append({
+                "date": t.date,
+                "ticker": t.ticker,
+                "pnl": t.pnl
+            })
+
+        df = pd.DataFrame(pnl_records)
+        if df.empty:
+            return pd.DataFrame()
+
+        grouped = df.groupby(["date", "ticker"]).sum().reset_index()
+        return grouped.pivot(index="date", columns="ticker", values="pnl").fillna(0).cumsum()
+
 
     def add_trade_in_concatenated(self, trade : Trade):
         """Add a trade to the concatenated trades dictionary."""
@@ -156,3 +250,59 @@ class Trades:
 
     def clear_trades(self):
         self.trades = []
+
+    @property
+    def realized_pnl(self):
+        # PnL sur les trades "sell" (réalisés)
+        realized = [trade.pnl for trade in self.trades if trade.trade_type == 'sell']
+        return sum(realized)
+
+    @property
+    def unrealized_pnl(self):
+        # PnL non réalisé : positions ouvertes * (cours actuel - avg price)
+        pnl_unrealized = 0.0
+        for ticker, pos in self.concatenated_trades.items():
+            qty = pos.get("quantity", 0)
+            avg_price = pos.get("price", 0)
+            if qty > 0:
+                # Il faut récupérer le prix actuel, ici je mets avg_price comme placeholder
+                current_price = avg_price  # à remplacer par vrai cours marché
+                pnl_unrealized += qty * (current_price - avg_price)
+        return pnl_unrealized
+
+    @property
+    def full_pnl(self):
+        # Somme des deux
+        return self.realized_pnl + self.unrealized_pnl
+
+    @property
+    def daily_realized_pnl(self):
+        # Dataframe avec cumulated realized pnl by date
+        df = pd.DataFrame([
+            {"date": t.date, "pnl": t.pnl} for t in self.trades if t.trade_type == "sell"
+        ])
+        if df.empty:
+            return pd.DataFrame()
+        df_grouped = df.groupby("date").sum().sort_index()
+        df_grouped['cumulative_realized_pnl'] = df_grouped['pnl'].cumsum()
+        return df_grouped
+
+    @property
+    def daily_unrealized_pnl(self):
+        # Ici c’est plus compliqué car il faut le cours à chaque date
+        # Pour simplifier on pourrait approximer ou récupérer prix marché ailleurs
+        # Sinon on peut laisser vide pour l'instant
+        return pd.DataFrame()  # à compléter selon les datas dispo
+
+    @property
+    def daily_full_pnl(self):
+        # daily realized + unrealized cumulés
+        realized = self.daily_realized_pnl
+        # Si unrealized daily dispo, la sommer sinon retourner realized
+        if not self.daily_unrealized_pnl.empty:
+            full = realized.copy()
+            full['cumulative_unrealized_pnl'] = self.daily_unrealized_pnl['unrealized_pnl']
+            full['cumulative_full_pnl'] = full['cumulative_realized_pnl'] + full['cumulative_unrealized_pnl']
+            return full
+        else:
+            return realized
