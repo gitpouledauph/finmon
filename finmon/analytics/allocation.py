@@ -6,7 +6,7 @@ import json
 import pandas as pd
 
 ENVELOPE = {"courant": "Comptes courants", "livret": "Livrets", "pea": "PEA", "cto": "Compte-titres",
-            "assurance_vie": "Assurance vie", "autre": "Autres"}
+            "assurance_vie": "Assurance vie", "crypto": "Crypto", "autre": "Autres"}
 
 
 def _explode(current: pd.DataFrame, col: str, label: str) -> pd.DataFrame:

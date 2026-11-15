@@ -36,7 +36,10 @@ INSTRUMENTS = [
      '{"EUR": 1.0}', '{"Europe": 1.0}', "Actions", '{"Énergie": 1.0}'),
     ("FR0000120073", "Air Liquide", "DEMO-AI", "EUR", 165.0, 0.07, 0.18,
      '{"EUR": 1.0}', '{"Europe": 1.0}', "Actions", '{"Matériaux": 1.0}'),
+    ("US5949181045", "Microsoft", "DEMO-MSFT", "USD", 415.0, 0.10, 0.24,
+     '{"USD": 1.0}', '{"Amérique du Nord": 1.0}', "Actions", '{"Technologie": 1.0}'),
 ]
+CRYPTO = {"BTC": (90000.0, 0.25, 0.55), "ETH": (3400.0, 0.15, 0.70), "BNB": (650.0, 0.1, 0.5)}
 
 FX = {"USD": (1.08, 1.165, 0.07), "JPY": (163.0, 172.0, 0.09), "GBP": (0.835, 0.865, 0.05),
       "CAD": (1.49, 1.61, 0.06), "CHF": (0.94, 0.93, 0.05), "AUD": (1.65, 1.78, 0.08)}
@@ -239,10 +242,85 @@ def build(today: date | None = None) -> str:
     pos.to_csv(inbox / "boursorama" / "pea-positions.csv", sep=";", index=False, encoding="utf-8-sig")
 
     # ------------------------------------------------------------------
-    # Import + données de marché synthétiques
+    # Binance (relevé « Transaction History ») et IBKR (Activity Statement)
+    # ------------------------------------------------------------------
+    for coin, (p0, mu, vol) in CRYPTO.items():
+        px[f"{coin}-USD"] = pd.Series(_path(rng, n, p0, mu, vol), index=days)
+
+    def usd_eur(sym, d):
+        return px[sym][pd.Timestamp(d)] / fx["USD"][pd.Timestamp(d)]
+
+    bl = []
+
+    def bn(ts, op, coin, change, account="Spot"):
+        bl.append(["123456789", ts, account, op, coin, f"{change:.8f}", ""])
+
+    bn("2024-12-05 09:12:03", "Deposit", "EUR", 2000)
+    for ts, coin, eur_amt in (("2024-12-06 10:00:00", "BTC", 1000), ("2024-12-06 10:05:00", "ETH", 600),
+                              ("2025-03-10 18:30:00", "BTC", 250)):
+        q = eur_amt / usd_eur(f"{coin}-USD", ts[:10])
+        bn(ts, "Buy", coin, q)
+        bn(ts, "Buy", "EUR", -eur_amt)
+        bn(ts, "Transaction Fee", coin, -q * 0.001)
+    bn("2024-12-07 08:00:00", "Simple Earn Flexible Subscription", "BTC", -0.005)
+    bn("2024-12-07 08:00:00", "Simple Earn Flexible Subscription", "BTC", 0.005, "Earn")
+    for m in pd.period_range("2025-01", today, freq="M"):
+        bn(f"{m.year}-{m.month:02d}-01 01:00:00", "Simple Earn Flexible Interest", "BTC", 0.00002)
+    # Conversion d'une partie de l'ETH en BTC
+    ts = "2025-09-02 12:00:00"
+    eth_q = 0.05
+    val = eth_q * usd_eur("ETH-USD", ts[:10])
+    bn(ts, "Binance Convert", "ETH", -eth_q)
+    bn(ts, "Binance Convert", "BTC", val / usd_eur("BTC-USD", ts[:10]))
+    bn("2026-02-14 16:20:00", "Withdraw", "EUR", -300)
+    bn("2026-02-14 16:19:00", "Sell", "ETH", -0.04)
+    bn("2026-02-14 16:19:00", "Sell", "EUR", 0.04 * usd_eur("ETH-USD", "2026-02-14"))
+    pd.DataFrame(bl, columns=["User_ID", "UTC_Time", "Account", "Operation", "Coin", "Change", "Remark"]).to_csv(
+        inbox / "binance" / "binance-transaction-history.csv", index=False)
+
+    msft = lambda d: px["DEMO-MSFT"][pd.Timestamp(d)]  # noqa: E731
+    lines = [
+        "Statement,Header,Field Name,Field Value",
+        "Statement,Data,BrokerName,Interactive Brokers Ireland Limited",
+        'Statement,Data,Period,"January 1, 2025 - December 31, 2025"',
+        "Account Information,Header,Field Name,Field Value",
+        "Account Information,Data,Base Currency,EUR",
+        "Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,C. Price,Proceeds,Comm/Fee,Basis,Realized P/L,MTM P/L,Code",
+    ]
+    held = 0
+    for d, q in (("2025-02-05", 8), ("2025-08-11", 5)):
+        p = msft(d)
+        held += q
+        lines.append(f'Trades,Data,Order,Stocks,USD,MSFT,"{d}, 15:31:02",{q},{p:.2f},{p:.2f},{-q * p:.2f},-1,{q * p + 1:.2f},0,0,O')
+    lines.append('Trades,Data,Order,Forex,EUR,EUR.USD,"2025-02-05, 15:30:00",-3500,1.04,1.04,3640,-2,0,0,0,')
+    lines.append("Trades,SubTotal,,Stocks,USD,MSFT,,13,,,,,,,,")
+    lines += [
+        "Deposits & Withdrawals,Header,Currency,Settle Date,Description,Amount",
+        "Deposits & Withdrawals,Data,EUR,2025-02-03,Electronic Fund Transfer,6000",
+        "Deposits & Withdrawals,Data,Total,,,6000",
+        "Dividends,Header,Currency,Date,Description,Amount",
+    ]
+    for d in ("2025-03-13", "2025-06-12", "2025-09-11", "2025-12-11"):
+        q = 8 if d < "2025-08-11" else 13
+        lines.append(f"Dividends,Data,USD,{d},MSFT(US5949181045) Cash Dividend USD 0.83 per Share (Ordinary Dividend),{q * 0.83:.2f}")
+    lines += ["Withholding Tax,Header,Currency,Date,Description,Amount,Code"]
+    for d in ("2025-03-13", "2025-06-12", "2025-09-11", "2025-12-11"):
+        q = 8 if d < "2025-08-11" else 13
+        lines.append(f"Withholding Tax,Data,USD,{d},MSFT(US5949181045) Cash Dividend USD 0.83 per Share - US Tax,{-q * 0.83 * 0.15:.2f},")
+    lines += [
+        "Interest,Header,Currency,Date,Description,Amount",
+        "Interest,Data,EUR,2025-11-04,EUR Credit Interest for Oct-2025,3.12",
+        "Open Positions,Header,DataDiscriminator,Asset Category,Currency,Symbol,Quantity,Mult,Cost Price,Cost Basis,Close Price,Value,Unrealized P/L,Code",
+        f"Open Positions,Data,Summary,Stocks,USD,MSFT,{held},1,0,0,0,0,0,",
+        "Financial Instrument Information,Header,Asset Category,Symbol,Description,Conid,Security ID,Underlying,Listing Exch,Multiplier,Type,Code",
+        "Financial Instrument Information,Data,Stocks,MSFT,MICROSOFT CORP,272093,US5949181045,MSFT,NASDAQ,1,COMMON,",
+    ]
+    (inbox / "ibkr" / "ibkr-activity-2025.csv").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    # ------------------------------------------------------------------
+    # Données de marché synthétiques puis import (hors ligne)
     # ------------------------------------------------------------------
     db = DB(profile.db_path)
-    logs = import_inbox(profile, db)
     inst = pd.DataFrame([{"isin": i, "name": nm, "ticker": t, "currency": c, "asset_class": ac,
                           "region": max(eval(rg), key=eval(rg).get), "sector": None,
                           "exposure": ex, "regions": rg, "sectors": sc, "resolved_by": "demo"}
@@ -253,6 +331,17 @@ def build(today: date | None = None) -> str:
     db.upsert("prices", pd.concat(pr), mode="replace")
     fxr = [pd.DataFrame({"currency": c, "date": s.index.strftime("%Y-%m-%d"), "rate": s.values}) for c, s in fx.items()]
     db.upsert("fx_rates", pd.concat(fxr), mode="replace")
+    logs = import_inbox(profile, db, online=False)
+    from .market import resolve_all
+
+    resolve_all(db, online=False)
+    # Une opération saisie à la main, comme depuis le formulaire
+    from .manual import add_operation, ensure_account
+
+    acc = ensure_account(db, "IBKR", "cto")
+    d = date(2026, 4, 1)
+    add_operation(db, account_id=acc, kind="sell", d=d, ticker="DEMO-MSFT", isin="US5949181045", name="Microsoft",
+                  quantity=3, price=float(msft(d)), currency="USD", fees=1.0, note="saisie démo", online=False)
     db.upsert("vacations", pd.DataFrame([
         {"name": "Japon 2025", "start": "2025-04-18", "end": "2025-04-27", "note": "démo"},
         {"name": "Lisbonne 2025", "start": "2025-08-02", "end": "2025-08-16", "note": "démo"},

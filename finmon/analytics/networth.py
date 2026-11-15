@@ -7,7 +7,8 @@ import pandas as pd
 
 CASH_TYPES = {"courant", "livret", "autre"}
 BUCKET = {"courant": "Liquidités", "livret": "Épargne réglementée", "autre": "Autres actifs",
-          "pea": "Investissements", "cto": "Investissements", "assurance_vie": "Investissements"}
+          "pea": "Investissements", "cto": "Investissements", "assurance_vie": "Investissements",
+          "crypto": "Investissements"}
 
 
 def cash_balances(accounts: pd.DataFrame, tx: pd.DataFrame, snaps: pd.DataFrame,

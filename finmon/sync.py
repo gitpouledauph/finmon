@@ -1,4 +1,4 @@
-"""Orchestration : importer la boîte de dépôt, synchroniser TR, mettre à jour les cours."""
+"""Import des fichiers historiques (une fois) et mise à jour des cours."""
 from __future__ import annotations
 
 import shutil
@@ -7,21 +7,20 @@ from pathlib import Path
 
 from .config import Profile
 from .db import DB
-from .importers import boursorama, traderepublic
+from .importers import binance, boursorama, ibkr, traderepublic
+
+SOURCES = ("boursorama", "traderepublic", "binance", "ibkr", "modele")
 
 
-def import_inbox(profile: Profile, db: DB) -> list[str]:
-    """Importe tous les CSV déposés dans data/<profil>/inbox/** puis les archive."""
+def import_inbox(profile: Profile, db: DB, online: bool = True) -> list[str]:
+    """Importe tous les fichiers déposés dans data/<profil>/inbox/** puis les archive."""
     logs = []
     for path in sorted(profile.inbox.rglob("*")):
         if not path.is_file() or path.suffix.lower() not in (".csv", ".txt", ".xlsx"):
             continue
         folder = path.parent.name.lower()
         try:
-            if folder == "traderepublic":
-                kind, n = traderepublic.import_file(db, path)
-            else:
-                kind, n = import_any(db, path)
+            kind, n = import_any(db, path, account_hint=path.name, online=online)
             logs.append(f"✅ {path.name} : {kind}, {n} nouvelles lignes")
             stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
             dest = profile.archive / folder / f"{stamp}_{path.name}"
@@ -33,27 +32,27 @@ def import_inbox(profile: Profile, db: DB) -> list[str]:
     return logs
 
 
-def import_any(db: DB, path: Path, account_hint: str | None = None) -> tuple[str, int]:
-    """Détecte la source (Boursorama ou Trade Republic) d'après les colonnes."""
-    from .parsing import read_csv_auto
+def import_any(db: DB, path: Path, account_hint: str | None = None, online: bool = True) -> tuple[str, int]:
+    """Reconnaît la source d'après le contenu du fichier et l'importe."""
+    from . import manual
+    from .parsing import read_csv_auto, read_text
 
+    path = Path(path)
+    if path.suffix.lower() in (".csv", ".txt") and ibkr.detect_text(read_text(path)):
+        return ibkr.import_file(db, path, online=online)
     df = read_csv_auto(path)
+    if binance.detect(df):
+        return binance.import_file(db, path, online=online)
     if traderepublic.detect(df):
         return traderepublic.import_file(db, path)
+    if manual.detect(df):
+        return manual.import_template(db, path, online=online)
     return boursorama.import_file(db, path, account_hint=account_hint or path.name)
 
 
-def refresh_all(profile: Profile, tr: bool = False, interactive: bool = True, prices: bool = True) -> list[str]:
+def refresh_prices(db: DB) -> list[str]:
     from . import market
 
-    db = DB(profile.db_path)
-    logs = import_inbox(profile, db)
-    if tr:
-        try:
-            logs += traderepublic.sync(db, profile.archive / "traderepublic" / "latest", interactive=interactive)
-        except Exception as e:
-            db.log("traderepublic", None, 0, "error", str(e))
-            logs.append(f"❌ Trade Republic : {e}")
-    if prices and profile.name != "demo":
-        logs += market.update_all(db)
-    return logs
+    logs = market.update_all(db)
+    n, t = market.live_update(db)
+    return logs + [f"Cours en direct : {n} valeurs à {t}"]

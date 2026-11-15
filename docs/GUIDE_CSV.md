@@ -1,38 +1,71 @@
-### 1. Compte courant et livrets Boursorama — l'essentiel
+#### Le principe
 
-C'est ce fichier qui alimente **dépenses, revenus, vacances et soldes**.
+1. **Une seule fois** : on importe l'historique complet de chaque compte (fichiers ci-dessous).
+2. **Ensuite** : chaque nouvel achat, vente, dividende ou versement se saisit dans la page **➕ Saisir une opération**.
+   Aucune connexion aux banques ni aux courtiers ; seuls les cours publics viennent de Yahoo Finance.
 
-1. Sur **boursobank.com** (le site web, pas l'app mobile), ouvrez **Mes comptes** puis cliquez sur le compte courant.
-2. Dans la liste des opérations, cliquez sur l'icône **Télécharger / Exporter** (flèche vers le bas, au-dessus de la liste).
-3. Choisissez le format **CSV** et la **période la plus longue possible** (idéalement depuis l'ouverture du compte ; sinon faites plusieurs exports, les doublons sont ignorés).
-4. Recommencez pour **chaque livret** (Livret A, LDDS…) : cela donne l'historique des versements et intérêts.
+Déposez les fichiers dans **Données & imports › Import historique** : le format est reconnu automatiquement.
+Ré-importer un fichier qui recoupe un précédent ne crée pas de doublons.
 
-Le fichier attendu commence par une ligne d'en-tête du type :
-`dateOp;dateVal;label;category;categoryParent;supplierFound;amount;comment;accountNum;accountLabel;accountbalance`
+---
 
-Ensuite, refaites un export **une fois par mois** (le dernier mois suffit) pour garder le dashboard à jour.
+#### 🟡 Binance — relevé de toutes les transactions
 
-### 2. PEA / compte-titres Boursorama — si vous en avez un
+1. Sur **binance.com** (navigateur d'ordinateur) : **Portefeuille › Vue d'ensemble › Historique des transactions**.
+2. En haut à droite : **Exporter › Exporter l'historique des transactions** (ou « Générer tous les relevés »).
+3. Compte : **Tous** · Crypto : **Toutes** · Période : depuis l'ouverture du compte. Si la période est limitée
+   (souvent 12 mois par export), faites un export par année.
+4. Téléchargez le fichier quand Binance l'a préparé (quelques minutes, lien dans « Historique des exports ») :
+   un CSV qui commence par `User_ID,UTC_Time,Account,Operation,Coin,Change,Remark`.
 
-Deux exports complémentaires, depuis l'espace **Bourse › Mon portefeuille** :
+Achats, ventes, conversions, frais, intérêts Earn/staking, dépôts et retraits sont tous pris en compte.
+Les montants en EUR sont calculés au cours du jour de chaque opération.
 
-- **Positions** (photo actuelle : titre, ISIN, quantité, cours, prix de revient, valorisation). Si un bouton
-  d'export CSV/Excel est proposé sur la page portefeuille, prenez-le. Si l'export est en Excel (.xlsx),
-  ouvrez-le et faites « Enregistrer sous… › CSV ».
-- **Mouvements / historique des opérations** du PEA (achats, ventes, dividendes) sur la période la plus longue.
-  Sans cet historique, la performance part du jour du premier import et l'effet de change n'est pas calculable.
+#### 🔴 Interactive Brokers — relevé d'activité annuel
 
-Au moment de l'import, indiquez s'il s'agit du **PEA** ou du **compte-titres**.
-L'interface Boursorama change régulièrement : si vous ne trouvez pas ces exports, envoyez-moi une capture
-de la page ou le fichier obtenu, j'adapterai le lecteur.
+1. **Portail client › Performance et relevés › Relevés › Activité** (« Activity Statement »).
+2. Période : **Annuelle**, et choisissez une année (ou « Plage de dates personnalisée »).
+3. Format : **CSV** › **Exécuter / Télécharger**.
+4. Recommencez pour **chaque année** depuis l'ouverture du compte, plus l'année en cours
+   (période « Depuis le début de l'année »).
 
-### 3. Soldes ailleurs
+Le fichier commence par `Statement,Header,Field Name,Field Value`. Achats/ventes, dividendes, retenues à la source,
+intérêts, frais et versements sont repris et convertis en EUR au taux du jour. Les opérations de change
+(EUR.USD) sont ignorées : seule compte la valeur en euros.
 
-Un livret dans une autre banque ? Saisissez son solde dans **Revenus & épargne › Saisir un solde à la main**.
+#### 🟢 Trade Republic — export unique avec pytr
 
-### Où mettre les fichiers
+Trade Republic ne propose pas d'export CSV complet ; on utilise **une fois** l'outil open source pytr, en local :
 
-- soit via la page **Données & imports › Importer des CSV** (glisser-déposer) ;
-- soit en les copiant dans `data/reel/inbox/boursorama/` puis `python -m finmon import`.
+```bash
+cd ~/Desktop/Draft/Monitoring_Investments
+source .venv-finmon/bin/activate
+python -m finmon export-tr
+```
 
-Les fichiers importés sont archivés dans `data/reel/archive/`. Rien n'est envoyé sur Internet.
+pytr demande votre numéro (+33…), votre PIN, puis un code à valider dans l'app Trade Republic.
+L'historique est téléchargé et importé directement. Ensuite, coupez le lien : `rm -rf ~/.pytr`.
+
+#### 🔵 Boursorama
+
+**Compte courant et livrets** (pour les dépenses, revenus, vacances et soldes) :
+**Mes comptes** › le compte › icône **Exporter** au-dessus des opérations › **CSV**, période la plus longue possible.
+Un fichier par compte (courant, Livret A, LDDS…). Le fichier commence par `dateOp;dateVal;label;…`.
+Pour suivre les dépenses ensuite, refaites cet export une fois par mois (le dernier mois suffit).
+
+**PEA / compte-titres** : depuis **Bourse › Mon portefeuille**, exportez si possible
+- les **positions** (titre, ISIN, quantité, cours, prix de revient) ;
+- l'**historique des opérations** (achats, ventes, dividendes).
+
+Choisissez « PEA » ou « Compte-titres » au moment de l'import. Si Boursorama ne propose pas d'export exploitable,
+remplissez le **modèle CSV finmon** (bouton ci-dessous) avec vos achats passés, ou envoyez-moi le fichier obtenu.
+
+#### Autre courtier, ou saisie en masse
+
+Téléchargez le **modèle CSV finmon** : une ligne par opération
+(`date;compte;type;ticker;isin;nom;quantite;prix;devise;frais;note`). Types : Achat, Vente, Dividende, Versement,
+Retrait, Frais, Intérêts. Pour Dividende/Versement/Retrait, mettez le montant dans la colonne `prix`.
+
+#### Soldes ailleurs
+
+Un livret dans une autre banque ? **Revenus & épargne › Saisir un solde à la main**.

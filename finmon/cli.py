@@ -1,9 +1,8 @@
 """Ligne de commande : python -m finmon <commande>.
 
-  import       importe les CSV déposés dans data/reel/inbox/
-  sync         import + Trade Republic (pytr) + cours et change
-  sync-tr      Trade Republic seulement (interactif : code à 4 chiffres)
-  prices       met à jour cours, change et métadonnées des titres
+  import       importe les fichiers déposés dans data/reel/inbox/ (Boursorama, Binance, IBKR, TR, modèle)
+  export-tr    UNE FOIS : exporte l'historique Trade Republic avec pytr puis l'importe
+  prices       met à jour cours (historique + dernier cours), change et métadonnées
   demo         (re)génère le profil de démonstration
   export       exporte tout en Excel dans data/<profil>/exports/
   status       résumé de ce qui est en base
@@ -22,9 +21,8 @@ from .db import DB
 
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(prog="finmon", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["import", "sync", "sync-tr", "prices", "demo", "export", "status", "dashboard"])
+    ap.add_argument("command", choices=["import", "export-tr", "prices", "demo", "export", "status", "dashboard"])
     ap.add_argument("--profile", default=None, help="reel (défaut) ou demo")
-    ap.add_argument("--no-tr", action="store_true", help="sync : ne pas lancer pytr")
     args = ap.parse_args(argv)
     profile = config.get_profile(args.profile)
 
@@ -40,18 +38,15 @@ def main(argv: list[str] | None = None) -> None:
         from .sync import import_inbox
 
         logs = import_inbox(profile, db) or ["Rien à importer dans " + str(profile.inbox)]
-    elif args.command == "sync":
-        from .sync import refresh_all
-
-        logs = refresh_all(profile, tr=not args.no_tr, interactive=sys.stdin.isatty())
-    elif args.command == "sync-tr":
+    elif args.command == "export-tr":
         from .importers import traderepublic
 
-        logs = traderepublic.sync(db, profile.archive / "traderepublic" / "latest", interactive=True)
+        logs = traderepublic.sync(db, profile.archive / "traderepublic" / "historique", interactive=True)
+        logs.append("Historique Trade Republic importé. Vous pouvez supprimer ~/.pytr si vous ne voulez plus de lien.")
     elif args.command == "prices":
-        from . import market
+        from .sync import refresh_prices
 
-        logs = market.update_all(db)
+        logs = refresh_prices(db)
     elif args.command == "export":
         from .data import export_excel, load
 

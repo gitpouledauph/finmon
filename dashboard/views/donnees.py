@@ -13,78 +13,66 @@ db = get_db()
 if profile.name == "demo":
     st.warning("Vous êtes sur le profil **Démo**. Repassez sur « Mes données » dans la barre latérale pour importer vos fichiers.")
 
-tab_imp, tab_tr, tab_inst, tab_state, tab_exp = st.tabs(
-    ["📄 Importer des CSV", "🇩🇪 Trade Republic", "🏷️ Titres", "🔎 État des données", "📤 Export"])
+tab_imp, tab_inst, tab_state, tab_exp = st.tabs(
+    ["📄 Import historique (une fois)", "🏷️ Titres", "🔎 État des données", "📤 Export"])
 
-# ------------------------------------------------------------- import CSV
+# ------------------------------------------------------------- import historique
 with tab_imp:
+    from finmon import manual
+
     st.markdown(
-        "Déposez ici vos exports **Boursorama** (opérations de compte courant/livret, positions ou mouvements "
-        "du PEA/CTO) ou les fichiers **pytr**. Le format est reconnu automatiquement ; ré-importer un fichier "
-        "qui recoupe un précédent ne crée pas de doublons.")
-    with st.expander("📘 Quels fichiers exporter depuis Boursorama ?"):
+        "**Une seule fois** : importez l'historique de chaque compte. Ensuite, ajoutez vos nouvelles opérations "
+        "dans **Saisir une opération** — plus aucune connexion n'est nécessaire. "
+        "Le format est reconnu automatiquement et ré-importer un fichier ne crée pas de doublons.")
+    with st.expander("📘 Quel fichier pour chaque compte ?", expanded=True):
         st.markdown((ROOT / "docs" / "GUIDE_CSV.md").read_text(encoding="utf-8"))
-    hint = st.radio("Pour un fichier de titres, il s'agit du…", ["PEA", "Compte-titres (CTO)"], horizontal=True)
+    st.download_button("⬇️ Modèle CSV finmon (pour tout autre courtier ou une saisie en masse)",
+                       manual.template_csv().encode("utf-8-sig"), file_name="modele-finmon.csv", mime="text/csv")
+    hint = st.radio("Pour un fichier Boursorama de titres (positions / mouvements), il s'agit du…",
+                    ["PEA", "Compte-titres (CTO)"], horizontal=True)
     files = st.file_uploader("Fichiers CSV ou Excel", type=["csv", "txt", "xlsx"], accept_multiple_files=True)
     if files and st.button("Importer", type="primary"):
         from finmon.sync import import_any
 
-        for f in files:
-            dest = profile.archive / "uploads" / f"{datetime.now():%Y%m%d-%H%M%S}_{f.name}"
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_bytes(f.getvalue())
-            try:
-                kind, n = import_any(db, dest, account_hint="pea" if hint == "PEA" else "cto")
-                st.success(f"{f.name} : reconnu comme « {kind} », {n} nouvelles lignes.")
-            except Exception as e:
-                db.log("upload", f.name, 0, "error", str(e))
-                st.error(f"{f.name} : {e}")
+        with st.spinner("Import (les cours historiques sont téléchargés pour valoriser crypto et devises)…"):
+            for f in files:
+                dest = profile.archive / "uploads" / f"{datetime.now():%Y%m%d-%H%M%S}_{f.name}"
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(f.getvalue())
+                try:
+                    kind, n = import_any(db, dest, account_hint="pea" if hint == "PEA" else "cto",
+                                         online=profile.name != "demo")
+                    st.success(f"{f.name} : reconnu comme « {kind} », {n} nouvelles lignes.")
+                except Exception as e:
+                    db.log("upload", f.name, 0, "error", str(e))
+                    st.error(f"{f.name} : {e}")
+            if profile.name != "demo":
+                from finmon.sync import refresh_prices
+
+                for line in refresh_prices(db):
+                    st.write(line)
         invalidate()
+        warn = db.read("SELECT file, message FROM import_log WHERE status IN ('warning','error') "
+                       "ORDER BY ts DESC LIMIT 10")
+        if not warn.empty:
+            with st.expander("⚠️ Points d'attention de l'import"):
+                st.dataframe(warn, hide_index=True, width="stretch")
     st.divider()
-    st.markdown(f"Vous pouvez aussi copier les fichiers dans `{profile.inbox}` (sous-dossiers `boursorama/`, "
-                "`traderepublic/`) puis cliquer :")
+    st.markdown(f"Autre possibilité : copier les fichiers dans `{profile.inbox}` puis cliquer :")
     c1, c2 = st.columns(2)
     if c1.button("📥 Importer la boîte de dépôt"):
         from finmon.sync import import_inbox
 
-        for line in import_inbox(profile, db) or ["Boîte de dépôt vide."]:
+        for line in import_inbox(profile, db, online=profile.name != "demo") or ["Boîte de dépôt vide."]:
             st.write(line)
         invalidate()
-    if c2.button("🌐 Mettre à jour cours & taux de change", disabled=profile.name == "demo",
-                 help="Seuls les ISIN/tickers et paires de devises sont envoyés à Yahoo Finance."):
-        from finmon import market
+    if c2.button("🌐 Mettre à jour l'historique des cours & changes", disabled=profile.name == "demo",
+                 help="Seuls les tickers et paires de devises sont envoyés à Yahoo Finance."):
+        from finmon.sync import refresh_prices
 
         with st.spinner("Téléchargement des cours…"):
-            for line in market.update_all(db):
+            for line in refresh_prices(db):
                 st.write(line)
-        invalidate()
-
-# ------------------------------------------------------------- Trade Republic
-with tab_tr:
-    from finmon.importers import traderepublic as trmod
-
-    st.markdown(
-        "Trade Republic n'a pas d'API officielle : finmon utilise **pytr**, un client open source qui "
-        "tourne sur votre Mac. Identifiants et cookies restent dans `~/.pytr/`.")
-    st.markdown("**Première connexion (une fois, dans un terminal) :**")
-    st.code(f"cd {ROOT}\nsource .venv-finmon/bin/activate\npytr login --store_credentials", language="bash")
-    st.caption("pytr demande votre numéro et votre PIN, puis un code reçu dans l'app. "
-               "⚠️ --store_credentials enregistre le PIN en clair dans ~/.pytr/credentials : "
-               "omettez l'option si vous préférez le ressaisir à chaque synchro (via `python -m finmon sync-tr`).")
-    ok = trmod.credentials_stored()
-    st.write("Identifiants enregistrés : " + ("✅ oui" if ok else "❌ non"))
-    if st.button("🔄 Synchroniser Trade Republic", disabled=not ok or profile.name == "demo", type="primary"):
-        with st.spinner("pytr exporte vos transactions… (peut prendre une minute)"):
-            try:
-                for line in trmod.sync(db, profile.archive / "traderepublic" / "latest", interactive=False):
-                    st.write(line)
-                from finmon import market
-
-                for line in market.update_all(db):
-                    st.write(line)
-            except Exception as e:
-                st.error(str(e))
-                st.info("Si pytr demande un nouveau code, lancez `python -m finmon sync-tr` dans un terminal.")
         invalidate()
 
 # ------------------------------------------------------------- titres

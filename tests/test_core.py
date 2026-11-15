@@ -90,3 +90,79 @@ def test_boursorama_detection(tmp_path):
                  "2025-01-02;2025-01-02;CARTE 01/01/25 MONOPRIX;Courses;Alimentation;monoprix;-12,30;;0001;COMPTE;100,00\n",
                  encoding="utf-8")
     assert boursorama.detect(read_csv_auto(p)) == "operations"
+
+
+# ---------------------------------------------------------------- imports historiques
+from finmon.db import DB  # noqa: E402
+from finmon.importers import binance, ibkr  # noqa: E402
+from finmon import manual  # noqa: E402
+
+
+def _db_with_market(tmp_path):
+    db = DB(tmp_path / "t.db")
+    days = pd.date_range("2024-01-01", "2024-12-31").strftime("%Y-%m-%d")
+    db.upsert("prices", pd.DataFrame({"symbol": "BTC-USD", "date": days, "close": 50000.0}))
+    db.upsert("prices", pd.DataFrame({"symbol": "ETH-USD", "date": days, "close": 2500.0}))
+    db.upsert("fx_rates", pd.DataFrame({"currency": "USD", "date": days, "rate": 1.25}))
+    return db
+
+
+def test_binance_ledger(tmp_path):
+    db = _db_with_market(tmp_path)
+    df = pd.DataFrame([
+        ["1", "2024-02-01 10:00:00", "Spot", "Deposit", "EUR", "1000"],
+        ["1", "2024-02-02 10:00:00", "Spot", "Buy", "BTC", "0.02"],
+        ["1", "2024-02-02 10:00:00", "Spot", "Buy", "EUR", "-800"],
+        ["1", "2024-02-02 10:00:00", "Spot", "Transaction Fee", "BTC", "-0.00002"],
+        ["1", "2024-03-01 10:00:00", "Earn", "Simple Earn Flexible Interest", "BTC", "0.0001"],
+        ["1", "2024-03-02 10:00:00", "Spot", "Simple Earn Flexible Subscription", "BTC", "-0.01"],
+        ["1", "2024-04-01 10:00:00", "Spot", "Binance Convert", "BTC", "-0.005"],
+        ["1", "2024-04-01 10:00:00", "Spot", "Binance Convert", "ETH", "0.1"],
+    ], columns=["User_ID", "UTC_Time", "Account", "Operation", "Coin", "Change"])
+    n, warn = binance.import_ledger(db, df, online=False)
+    assert n == 6  # dépôt, achat, frais, intérêt, conversion (vente + achat) ; souscription Earn ignorée
+    buy = db.read("SELECT * FROM trades WHERE kind='buy' AND isin='CRYPTO-BTC'")
+    assert buy["amount"].iloc[0] == pytest.approx(-800)
+    conv = db.read("SELECT * FROM trades WHERE kind='buy' AND isin='CRYPTO-ETH'")
+    assert conv["amount"].iloc[0] == pytest.approx(-0.1 * 2500 / 1.25)   # valeur EUR de l'ETH reçu
+    assert db.read("SELECT COUNT(*) n FROM trades WHERE kind='reward'")["n"][0] == 1
+
+
+IBKR_SAMPLE = """Statement,Header,Field Name,Field Value
+Statement,Data,Period,"January 1, 2024 - December 31, 2024"
+Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,C. Price,Proceeds,Comm/Fee,Basis,Realized P/L,MTM P/L,Code
+Trades,Data,Order,Stocks,USD,AAPL,"2024-03-01, 10:15:22",10,180,181,-1800,-1,1801,0,0,O
+Trades,Data,Order,Forex,EUR,EUR.USD,"2024-03-01, 10:00:00",-1000,1.25,1.25,1250,-2,0,0,0,
+Deposits & Withdrawals,Header,Currency,Settle Date,Description,Amount
+Deposits & Withdrawals,Data,EUR,2024-02-28,Electronic Fund Transfer,5000
+Deposits & Withdrawals,Data,Total,,,5000
+Dividends,Header,Currency,Date,Description,Amount
+Dividends,Data,USD,2024-05-16,AAPL(US0378331005) Cash Dividend USD 0.25 per Share,2.5
+Financial Instrument Information,Header,Asset Category,Symbol,Description,Conid,Security ID,Underlying,Listing Exch,Multiplier,Type,Code
+Financial Instrument Information,Data,Stocks,AAPL,APPLE INC,265598,US0378331005,AAPL,NASDAQ,1,COMMON,
+"""
+
+
+def test_ibkr_statement(tmp_path):
+    db = _db_with_market(tmp_path)
+    assert ibkr.detect_text(IBKR_SAMPLE)
+    n, warn = ibkr.import_statement(db, IBKR_SAMPLE, online=False)
+    assert n == 3
+    buy = db.read("SELECT * FROM trades WHERE kind='buy'").iloc[0]
+    assert buy["isin"] == "US0378331005"
+    assert buy["amount"] == pytest.approx(-1801 / 1.25)
+    div = db.read("SELECT amount FROM trades WHERE kind='dividend'")["amount"].iloc[0]
+    assert div == pytest.approx(2.0)
+
+
+def test_manual_buy_in_usd(tmp_path):
+    db = _db_with_market(tmp_path)
+    acc = manual.ensure_account(db, "Mon CTO", "cto")
+    from datetime import date
+
+    row = manual.add_operation(db, account_id=acc, kind="buy", d=date(2024, 6, 3), ticker="AAPL",
+                               isin="US0378331005", name="Apple", quantity=2, price=200, currency="USD",
+                               fees=1.25, online=False, fund_with_deposit=True)
+    assert row["amount"] == pytest.approx(-(400 + 1.25) / 1.25)
+    assert db.read("SELECT COUNT(*) n FROM trades WHERE kind='deposit'")["n"][0] == 1
+    assert manual.ensure_account(db, "mon cto") == acc

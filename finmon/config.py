@@ -40,6 +40,8 @@ class Profile:
             self.data_dir,
             self.inbox / "boursorama",
             self.inbox / "traderepublic",
+            self.inbox / "binance",
+            self.inbox / "ibkr",
             self.inbox / "manuel",
             self.archive,
             self.exports,

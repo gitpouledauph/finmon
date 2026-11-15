@@ -19,22 +19,34 @@ Dans le dashboard, la barre latérale bascule entre **Mes données** et **Démo*
 
 ## Alimenter avec vos données
 
-| Source | Comment | Fréquence |
-|---|---|---|
-| Boursorama — compte courant, livrets | Export CSV des opérations (voir [docs/GUIDE_CSV.md](docs/GUIDE_CSV.md)), à déposer dans **Données & imports** | 1×/mois |
-| Boursorama — PEA / CTO | Export positions + mouvements | 1×/mois |
-| Trade Republic | `pytr login --store_credentials` une fois, puis bouton **Synchroniser** ou `python -m finmon sync-tr` | à volonté |
-| Autres livrets | Saisie manuelle du solde (page Revenus & épargne) | quand vous voulez |
-| Cours & change | Bouton **Mettre à jour** ou `python -m finmon prices` | quotidien (automatisable) |
+**1. Une seule fois : l'historique.** Dans **Données & imports › Import historique**, déposez :
+
+| Compte | Fichier |
+|---|---|
+| Binance | Historique des transactions exporté (CSV `User_ID,UTC_Time,Account,Operation,Coin,Change,Remark`) |
+| Interactive Brokers | Un *Activity Statement* annuel au format CSV par année |
+| Trade Republic | `python -m finmon export-tr` (pytr, une seule fois), puis `rm -rf ~/.pytr` |
+| Boursorama | Export CSV des opérations (courant, livrets) ; positions et mouvements du PEA/CTO |
+| Autre | Modèle CSV finmon (téléchargeable dans le dashboard) |
+
+Détail pas à pas : [docs/GUIDE_CSV.md](docs/GUIDE_CSV.md).
+
+**2. Ensuite : plus aucune connexion.** Chaque nouvelle opération (achat, vente, dividende, versement…)
+se saisit dans la page **➕ Saisir une opération** : compte, ticker Yahoo, date, quantité, prix, devise, frais.
+Le montant est converti en EUR au taux du jour et la ligne rejoint le portefeuille.
+
+**3. Cours en direct.** Le dashboard récupère le dernier cours de vos lignes (crypto en temps réel, actions
+avec ~15 min de différé selon la place) toutes les 1, 5 ou 15 minutes, et recalcule valeurs et PnL.
 
 Commandes utiles :
 
 ```bash
-.venv-finmon/bin/python -m finmon import     # importe data/reel/inbox/**
-.venv-finmon/bin/python -m finmon sync       # import + Trade Republic + cours
-.venv-finmon/bin/python -m finmon export     # classeur Excel dans data/reel/exports/
+.venv-finmon/bin/python -m finmon import      # importe data/reel/inbox/**
+.venv-finmon/bin/python -m finmon export-tr   # historique Trade Republic (une fois)
+.venv-finmon/bin/python -m finmon prices      # historique + dernier cours + change
+.venv-finmon/bin/python -m finmon export      # classeur Excel dans data/reel/exports/
 .venv-finmon/bin/python -m finmon status
-./scripts/install_daily_sync.sh              # tâche launchd quotidienne (import + cours)
+./scripts/install_daily_sync.sh               # mise à jour quotidienne des cours (launchd)
 ```
 
 ## Ce que montre le dashboard
@@ -53,7 +65,8 @@ Commandes utiles :
 - **Vacances** — périodes (saisies ou détectées via les paiements en devise étrangère), coût par voyage,
   par jour, par an, part des dépenses annuelles.
 - **Revenus & épargne** — revenus vs dépenses, épargne mensuelle, taux d'épargne, livrets.
-- **Données & imports** — dépôt de fichiers, synchro TR, édition des titres (ticker, expositions), journal, export.
+- **➕ Saisir une opération** — formulaire (compte, ticker, date, quantité, prix, devise, frais) et liste des saisies, avec suppression.
+- **Données & imports** — import historique unique, modèle CSV, édition des titres (ticker, expositions), journal, export.
 
 ## Méthodes de calcul
 
@@ -73,8 +86,9 @@ Commandes utiles :
 ## Structure
 
 ```
-finmon/            moteur (imports, base, marché, calculs, graphes)
-  importers/       boursorama.py, traderepublic.py
+finmon/            moteur (imports, saisie, base, marché, calculs, graphes)
+  importers/       boursorama.py, traderepublic.py, binance.py, ibkr.py
+  manual.py        saisie manuelle et modèle CSV
   analytics/       portfolio.py, budget.py, networth.py, allocation.py
 dashboard/         app Streamlit (app.py + views/)
 config/            réglages YAML

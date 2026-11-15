@@ -25,7 +25,7 @@ from datetime import date
 import numpy as np
 import pandas as pd
 
-BUY_LIKE = {"buy", "transfer_in"}
+BUY_LIKE = {"buy", "transfer_in", "reward"}
 SELL_LIKE = {"sell", "transfer_out"}
 FLOW_IN = {"deposit"}
 FLOW_OUT = {"withdrawal"}
@@ -209,11 +209,16 @@ def _calibrate(px: pd.Series, ev: pd.DataFrame, snap: pd.DataFrame, name: str, w
     ratio = ratio[np.isfinite(ratio)]
     if len(ratio):
         k = float(np.median(ratio))
-        if not 0.85 <= k <= 1.15:
+        if k < 0.3 or k > 3.0:
+            # Erreur d'unité manifeste (pence/livres, mauvaise cotation) : on recale la série.
             warnings.append(
-                f"Le cours Yahoo de « {name} » diffère de vos prix d'exécution (×{k:.2f}) : série recalée. "
-                f"Vérifiez le ticker dans config/instruments.yaml.")
+                f"Le cours Yahoo de « {name} » est ×{k:.2f} vos prix d'exécution : série recalée. "
+                f"Vérifiez le ticker (Données › Titres).")
             px = px * k
+        elif not 0.85 <= k <= 1.15:
+            warnings.append(
+                f"« {name} » : vos prix d'exécution s'écartent de {abs(k - 1) * 100:.0f} % du cours Yahoo à ces dates. "
+                f"Vérifiez le prix saisi ou le ticker (la valorisation utilise le cours Yahoo).")
     return px.bfill()
 
 

@@ -17,6 +17,7 @@ from .db import DB
 log = logging.getLogger(__name__)
 
 EUR_SUFFIXES = (".DE", ".PA", ".AS", ".MI", ".F", ".MC", ".BR", ".VI", ".LS", ".IR")
+STABLES = {"USDT", "USDC", "FDUSD", "BUSD", "DAI", "TUSD", "USDP"}
 CORE_FX = ["USD", "GBP", "JPY", "CHF", "CAD", "AUD", "CNY", "INR", "TWD", "KRW", "HKD", "SEK", "DKK", "NOK"]
 
 # --------------------------------------------------------------------------
@@ -122,13 +123,27 @@ def resolve_instrument(isin: str, name: str, online: bool = True) -> dict:
            "exposure": conf.get("exposure"), "regions": conf.get("regions"), "sectors": conf.get("sectors"),
            "resolved_by": "config" if conf else None}
     quote: dict = {}
+    # Identifiants internes : CRYPTO-BTC (Binance), TICKER:AAPL (saisie sans ISIN), IBKR:XYZ
+    if isin.startswith("CRYPTO-"):
+        coin = isin.split("-", 1)[1]
+        row.update(ticker=row["ticker"] or f"{coin}-USD", currency=row["currency"] or "USD",
+                   asset_class=row["asset_class"] or ("Monétaire" if coin in STABLES else "Crypto"),
+                   name=row["name"] or coin, resolved_by=row["resolved_by"] or "crypto")
+        row["exposure"] = row["exposure"] or {"USD": 1.0}
+        row["regions"] = row["regions"] or {"Monde": 1.0}
+        online_info = False
+    else:
+        online_info = online
+    if isin.startswith(("TICKER:", "IBKR:")) and not row["ticker"]:
+        row["ticker"] = isin.split(":", 1)[1]
+        row["resolved_by"] = row["resolved_by"] or "ticker"
     if online and not row["ticker"]:
         row["ticker"], quote = _search_ticker(isin)
         row["resolved_by"] = row["resolved_by"] or ("yahoo" if row["ticker"] else None)
 
     prof = profile_for(f"{name} {quote.get('longname', '')} {quote.get('shortname', '')}")
     info = {}
-    if online and row["ticker"]:
+    if online_info and row["ticker"]:
         import yfinance as yf
 
         t = yf.Ticker(row["ticker"])
@@ -268,3 +283,140 @@ def update_all(db: DB) -> list[str]:
     logs += update_fx(db)
     logs += update_prices(db)
     return logs
+
+
+# --------------------------------------------------------------------------
+# Valeurs ponctuelles (imports, saisie manuelle) et cours en direct
+# --------------------------------------------------------------------------
+def _series(db: DB, table: str, key_col: str, key: str, val: str) -> pd.Series:
+    df = db.read(f"SELECT date, {val} AS v FROM {table} WHERE {key_col} = ? ORDER BY date", [key])
+    if df.empty:
+        return pd.Series(dtype=float)
+    return df.assign(date=pd.to_datetime(df["date"])).set_index("date")["v"]
+
+
+def ensure_history(db: DB, symbols: list[str], start: date, online: bool = True, fx: bool = False) -> None:
+    """Télécharge l'historique manquant (cours, ou change si fx=True) depuis start."""
+    if not online or not symbols:
+        return
+    table, col = ("fx_rates", "currency") if fx else ("prices", "symbol")
+    missing = []
+    for s in set(symbols):
+        first = db.read(f"SELECT MIN(date) AS d, MAX(date) AS m FROM {table} WHERE {col} = ?", [s])
+        d, m = first["d"][0], first["m"][0]
+        if d is None or date.fromisoformat(d) > start + timedelta(days=4) or date.fromisoformat(m) < date.today() - timedelta(days=4):
+            missing.append(s)
+    if not missing:
+        return
+    try:
+        df = _download([f"EUR{c}=X" for c in missing] if fx else missing, start - timedelta(days=7))
+    except Exception as e:
+        log.warning("Téléchargement impossible : %s", e)
+        return
+    if df.empty:
+        return
+    if fx:
+        df["currency"] = df["symbol"].str[3:6]
+        db.upsert("fx_rates", df.rename(columns={"close": "rate"})[["currency", "date", "rate"]], mode="replace")
+    else:
+        db.upsert("prices", df, mode="replace")
+
+
+def fx_on(db: DB, ccy: str, d, online: bool = True) -> float | None:
+    """Unités de devise pour 1 EUR à la date d (dernier connu)."""
+    ccy = (ccy or "EUR").upper()
+    if ccy == "EUR":
+        return 1.0
+    d = pd.Timestamp(d)
+    s = _series(db, "fx_rates", "currency", ccy, "rate")
+    if (s.empty or s.index[0] > d + pd.Timedelta(days=4) or s.index[-1] < d - pd.Timedelta(days=4)) and online:
+        ensure_history(db, [ccy], min(d.date(), date.today()), online, fx=True)
+        s = _series(db, "fx_rates", "currency", ccy, "rate")
+    if s.empty:
+        return None
+    v = s.asof(d)
+    return float(v) if v == v else float(s.iloc[0])
+
+
+def price_on(db: DB, ticker: str, d, online: bool = True) -> float | None:
+    """Cours de clôture du ticker (dans sa devise) à la date d."""
+    d = pd.Timestamp(d)
+    s = _series(db, "prices", "symbol", ticker, "close")
+    if (s.empty or s.index[0] > d + pd.Timedelta(days=4)) and online:
+        ensure_history(db, [ticker], min(d.date(), date.today()), online)
+        s = _series(db, "prices", "symbol", ticker, "close")
+    if s.empty:
+        return None
+    v = s.asof(d)
+    return float(v) if v == v else float(s.iloc[0])
+
+
+def eur_value(db: DB, ticker: str, ccy: str, qty: float, d, online: bool = True) -> float | None:
+    p = price_on(db, ticker, d, online)
+    r = fx_on(db, ccy, d, online)
+    if p is None or r is None:
+        return None
+    if ccy in ("GBp", "GBX"):
+        p, r = p / 100, fx_on(db, "GBP", d, online)
+    return qty * p / r
+
+
+def lookup(ticker: str) -> dict:
+    """Infos d'un ticker Yahoo pour le formulaire de saisie."""
+    import yfinance as yf
+
+    t = yf.Ticker(ticker)
+    out = {"ticker": ticker}
+    try:
+        fi = t.fast_info
+        out["last"] = float(fi.last_price)
+        out["currency"] = fi.currency
+    except Exception:
+        return {}
+    try:
+        info = t.info or {}
+        out["name"] = info.get("longName") or info.get("shortName") or ticker
+        out["isin"] = getattr(t, "isin", None) if hasattr(t, "isin") else None
+        out["quoteType"] = info.get("quoteType")
+    except Exception:
+        out["name"] = ticker
+    if out.get("isin") in ("-", ""):
+        out["isin"] = None
+    return out
+
+
+def held_tickers(db: DB) -> list[str]:
+    q = """SELECT DISTINCT i.ticker FROM instruments i
+           JOIN (SELECT isin FROM trades GROUP BY isin, account_id
+                 HAVING SUM(CASE WHEN kind IN ('buy','transfer_in','reward') THEN quantity
+                                 WHEN kind IN ('sell','transfer_out') THEN -quantity ELSE 0 END) > 1e-9
+                 UNION SELECT isin FROM position_snapshots) h ON h.isin = i.isin
+           WHERE i.ticker IS NOT NULL"""
+    return db.read(q)["ticker"].tolist()
+
+
+def live_update(db: DB) -> tuple[int, str]:
+    """Écrit le dernier cours (temps réel / différé 15 min selon la place) à la date du jour."""
+    import yfinance as yf
+
+    tickers = sorted(set(held_tickers(db) + [config.settings()["benchmark"]["ticker"]]))
+    fx_syms = [f"EUR{c}=X" for c in needed_currencies(db)]
+    rows, fx_rows = [], []
+    today = date.today().isoformat()
+    if tickers or fx_syms:
+        tk = yf.Tickers(" ".join(tickers + fx_syms))
+        for sym in tickers + fx_syms:
+            try:
+                v = float(tk.tickers[sym].fast_info.last_price)
+            except Exception:
+                continue
+            if v != v or v <= 0:
+                continue
+            if sym in fx_syms:
+                fx_rows.append({"currency": sym[3:6], "date": today, "rate": v})
+            else:
+                rows.append({"symbol": sym, "date": today, "close": v})
+    n = db.upsert("prices", pd.DataFrame(rows), mode="replace") + db.upsert("fx_rates", pd.DataFrame(fx_rows), mode="replace")
+    from datetime import datetime
+
+    return n, datetime.now().strftime("%H:%M:%S")
