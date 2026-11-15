@@ -20,9 +20,9 @@ c1, c2, c3 = st.columns([1, 2, 2], vertical_alignment="bottom")
 gran = c1.segmented_control("Vue", ["Mois", "Année"], default="Mois") or "Mois"
 span = c2.segmented_control("Période", ["Depuis le 1er salaire", "12 mois", "24 mois"],
                             default="Depuis le 1er salaire") or "Depuis le 1er salaire"
-refunds = c3.toggle("Déduire les remboursements reçus (amis, avoirs)", value=False,
-                    help="Désactivé (par défaut) : seul le salaire compte en revenu et seules les sorties d'argent "
-                         "comptent en dépenses. Le loyer est votre part fixe ; les flux de la colocation sont exclus.")
+refunds = c3.toggle("Déduire les avoirs carte (remboursements de marchands)", value=False,
+                    help="Revenu = salaire. Dépenses = paiements par carte uniquement (aucun virement, prélèvement ni "
+                         "retrait). Loyer = votre part fixe. Activé : les avoirs carte sont déduits.")
 
 g = budget.global_monthly(tx, deduct_refunds=refunds)
 last_data = tx["date"].max()

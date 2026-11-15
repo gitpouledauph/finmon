@@ -32,9 +32,9 @@ n_prev = max(prev12["month"].nunique(), 1)
 ly = tx[tx["month"] == m - pd.DateOffset(years=1)]
 
 
-refunds = st.toggle("Déduire les remboursements reçus (amis, avoirs)", value=False,
-                    help="Désactivé : seules les sorties d'argent comptent en dépenses, et seul le salaire compte en "
-                         "revenu. Activé : les remboursements d'amis et avoirs marchands réduisent les dépenses.")
+refunds = st.toggle("Déduire les avoirs carte (remboursements de marchands)", value=False,
+                    help="Les dépenses sont les paiements par carte uniquement. Activé : les avoirs et annulations "
+                         "carte (remboursements de marchands) sont déduits.")
 g = budget.global_monthly(tx, deduct_refunds=refunds)
 f = g.loc[m] if m in g.index else pd.Series(0.0, index=g.columns)
 g12 = g[(g.index < m) & (g.index >= m - pd.DateOffset(months=12))]
@@ -50,8 +50,9 @@ k[2].metric("Dépenses hors loyer", eur(f["depenses"]),
 k[3].metric("Économisé ce mois", eur(f["economise"], sign=True),
             f"{f['taux'] * 100:.0f} % du salaire" if f["taux"] == f["taux"] else None, delta_color="off",
             help="Salaire − loyer − dépenses hors loyer.")
-NOTE = {"depenses": "Sorties d'argent du mois (compte courant + carte) dans les catégories de dépense, hors loyer"
-                    + (" ; remboursements reçus déduits." if refunds else " ; les entrées d'argent ne sont pas déduites."),
+NOTE = {"depenses": "Paiements par carte bancaire du mois uniquement (libellés « CARTE … »), hors loyer : aucun "
+                    "virement, prélèvement ni retrait d'espèces"
+                    + (" ; avoirs carte déduits." if refunds else "."),
         "salaire": "Virements de salaire reçus dans le mois.", "loyer": "Votre part fixe, comptée le 1er du mois."}
 for col, part, lab in ((k[0], "salaire", "Salaire"), (k[1], "loyer", "Loyer"), (k[2], "depenses", "Dépenses hors loyer")):
     if detail_button(col, f"dlg_{part}"):

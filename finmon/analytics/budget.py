@@ -274,8 +274,8 @@ def global_monthly(df: pd.DataFrame, deduct_refunds: bool = False) -> pd.DataFra
     """Par mois : salaire, loyer, autres dépenses, économisé, taux, et où l'épargne est allée.
 
     - revenus = salaire uniquement (aides, remboursements d'impôt, primes… sont ignorés) ;
-    - dépenses = sorties d'argent des catégories de dépense, hors loyer. Par défaut les entrées
-      d'argent (remboursements d'amis, avoirs) ne sont PAS déduites ; `deduct_refunds` les déduit ;
+    - dépenses = paiements par CARTE uniquement (libellé « CARTE … »), hors loyer : aucun virement,
+      prélèvement ni retrait n'est compté. `deduct_refunds` déduit les avoirs / annulations carte ;
     - économisé = salaire − loyer − dépenses ;
     - investi = virements nets vers les courtiers ; livrets = versements − retraits des livrets (net).
     """
@@ -284,10 +284,7 @@ def global_monthly(df: pd.DataFrame, deduct_refunds: bool = False) -> pd.DataFra
         return pd.DataFrame(columns=cols, index=pd.DatetimeIndex([], name="month"), dtype=float)
     sal = df[df["category"] == INCOME_MAIN].groupby("month")["amount"].sum()
     rent = -df[df["category"] == RENT].groupby("month")["amount"].sum()
-    exp = df[(df["cat_type"] == "expense") & (df["category"] != RENT)]
-    if not deduct_refunds:
-        exp = exp[exp["amount"] < 0]
-    spend = -exp.groupby("month")["amount"].sum()
+    spend = -global_ops(df, "depenses", deduct_refunds).groupby("month")["amount"].sum()
     inv = -df[df["category"] == "Épargne & investissement"].groupby("month")["amount"].sum()
     liv = -df[df["category"] == "Épargne livrets"].groupby("month")["amount"].sum()
     out = pd.DataFrame({"salaire": sal, "loyer": rent, "depenses": spend, "investi": inv, "livrets": liv}).fillna(0.0)
@@ -309,8 +306,11 @@ def global_ops(df: pd.DataFrame, part: str, deduct_refunds: bool = False) -> pd.
     if part == "loyer":
         return df[df["category"] == RENT]
     if part == "depenses":
-        e = df[(df["cat_type"] == "expense") & (df["category"] != RENT)]
-        return e if deduct_refunds else e[e["amount"] < 0]
+        lab = df["label"].fillna("").str.upper().str.strip()
+        card = lab.str.match(r"^CARTE\s") & (df["amount"] < 0)
+        refund = lab.str.match(r"^(AVOIR|ANNUL(ATION)? CARTE)\b") & (df["amount"] > 0)
+        keep = card | (refund if deduct_refunds else False)
+        return df[keep & (df["cat_type"] == "expense") & (df["category"] != RENT)]
     if part == "investi":
         return df[df["category"] == "Épargne & investissement"]
     if part == "livrets":
