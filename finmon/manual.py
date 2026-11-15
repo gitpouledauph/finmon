@@ -164,3 +164,33 @@ def import_template(db: DB, path, online: bool = True) -> tuple[str, int]:
     if errors and not n:
         raise ValueError("; ".join(errors[:5]))
     return "modèle finmon", n
+
+
+def save_holdings(db: DB, account_id: str, d: date, lines: pd.DataFrame, crypto: bool = False,
+                  online: bool = True) -> int:
+    """Enregistre un relevé COMPLET des positions d'un compte à une date.
+
+    `lines` : colonnes ticker, isin (facultatif), name (facultatif), quantity.
+    Le portefeuille est recalé sur ce relevé : une ligne absente est considérée comme sortie,
+    une ligne en plus (dépôt, conversion, Earn non importés) est ajoutée comme apport au cours du jour.
+    Sur un compte crypto, « SOL » est compris comme SOL-USD.
+    """
+    rows = []
+    for r in lines.fillna("").itertuples(index=False):
+        ticker = str(getattr(r, "ticker", "") or "").strip().upper()
+        isin = str(getattr(r, "isin", "") or "").strip().upper()
+        qty = pd.to_numeric(getattr(r, "quantity", None), errors="coerce")
+        if not (ticker or isin) or pd.isna(qty) or qty <= 0:
+            continue
+        if crypto and ticker and "-" not in ticker and not isin:
+            ticker = f"{ticker}-USD"
+        key = isin if isin and not ticker else instrument_key(ticker, isin)
+        if key is None:
+            continue
+        name = str(getattr(r, "name", "") or "").strip() or None
+        register_instrument(db, key, ticker or None, name, None, online=online)
+        rows.append({"account_id": account_id, "date": d.isoformat(), "isin": key,
+                     "name": name or (ticker.split("-")[0] if key.startswith("CRYPTO-") else ticker or key),
+                     "quantity": float(qty), "price": None, "avg_cost": None, "value": None})
+    db.execute("DELETE FROM position_snapshots WHERE account_id = ? AND date = ?", [account_id, d.isoformat()])
+    return db.upsert("position_snapshots", pd.DataFrame(rows), mode="replace")

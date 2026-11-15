@@ -45,7 +45,7 @@ def main(argv: list[str] | None = None) -> None:
         from .sync import refresh_prices
 
         logs += refresh_prices(db)
-        logs.append("✅ Historique Trade Republic importé. Aucune session n'est conservée sur ce Mac.")
+        logs.append("Historique Trade Republic importé. Aucune session n'est conservée sur ce Mac.")
     elif args.command == "prices":
         from .sync import refresh_prices
 

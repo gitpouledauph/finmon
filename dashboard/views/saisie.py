@@ -15,11 +15,54 @@ online = profile_name() != "demo"
 accounts = db.table("accounts")
 inv = accounts[accounts["type"].isin(["pea", "cto", "crypto", "assurance_vie"])]
 
+mode = st.segmented_control("Saisie", ["Une opération", "Un relevé de positions"], default="Une opération",
+                            label_visibility="collapsed") or "Une opération"
+
+if mode == "Un relevé de positions":
+    st.markdown("Indiquez **tout ce que contient le compte** aujourd'hui (ce que vous voyez dans l'application). "
+                "finmon recale le portefeuille : une ligne absente est considérée comme vendue ou sortie, "
+                "une ligne nouvelle (dépôt, conversion, Earn, staking…) est ajoutée au cours du jour.")
+    labels_h = {r.id: r.name for r in inv.itertuples()}
+    if not labels_h:
+        st.info("Aucun compte d'investissement : importez un historique ou saisissez d'abord une opération.")
+        st.stop()
+    h1, h2 = st.columns([2, 1])
+    acc_h = h1.selectbox("Compte", list(labels_h), format_func=labels_h.get, key="h_acc")
+    d_h = h2.date_input("Date du relevé", value=date.today(), max_value=date.today(), format="DD/MM/YYYY", key="h_d")
+    is_crypto = accounts.set_index("id").loc[acc_h, "type"] == "crypto"
+    cur = bundle().portfolio.current
+    cur = cur[cur["account_id"] == acc_h] if not cur.empty else cur
+    base = pd.DataFrame({
+        "ticker": [(t.split("-")[0] if is_crypto and isinstance(t, str) else t) for t in cur.get("ticker", [])],
+        "isin": [i if not str(i).startswith(("CRYPTO-", "TICKER:", "IBKR:")) else "" for i in cur.get("isin", [])],
+        "name": list(cur.get("name", [])), "quantity": list(cur.get("qty", [])),
+    })
+    st.caption("Lignes pré-remplies avec ce que finmon connaît. Corrigez les quantités, ajoutez les lignes manquantes "
+               "(ex. ticker SOL sur un compte crypto, CW8.PA ou un ISIN pour un titre), videz la quantité d'une "
+               "ligne qui n'existe plus.")
+    ed_h = st.data_editor(base, num_rows="dynamic", hide_index=True, width="stretch", key=f"h_ed_{acc_h}",
+                          column_config={
+                              "ticker": st.column_config.TextColumn("Ticker" + (" (BTC, SOL…)" if is_crypto else " Yahoo")),
+                              "isin": st.column_config.TextColumn("ISIN (facultatif)"),
+                              "name": st.column_config.TextColumn("Nom (facultatif)"),
+                              "quantity": st.column_config.NumberColumn("Quantité", format="%.8g", min_value=0.0)})
+    if st.button("Enregistrer le relevé", type="primary"):
+        try:
+            n = manual.save_holdings(db, acc_h, d_h, ed_h, crypto=bool(is_crypto), online=online)
+            if online:
+                market.update_all(db)
+                market.live_update(db)
+            invalidate()
+            st.success(f"Relevé enregistré : {n} ligne(s) au {d_h:%d/%m/%Y}.")
+        except Exception as e:
+            st.error(str(e))
+    st.stop()
+
 # ------------------------------------------------------------- compte
 c1, c2 = st.columns([2, 1])
 labels = {r.id: f"{r.name} ({r.institution})" if r.institution != r.name else r.name for r in inv.itertuples()}
 choice = c1.selectbox("Compte", list(labels) + ["__new__"],
-                      format_func=lambda k: "➕ Nouveau compte…" if k == "__new__" else labels[k])
+                      format_func=lambda k: "Nouveau compte…" if k == "__new__" else labels[k])
 if choice == "__new__":
     n1, n2 = st.columns([2, 1])
     new_name = n1.text_input("Nom du nouveau compte", placeholder="ex. PEA Fortuneo")
@@ -38,7 +81,7 @@ if with_title:
     isin = t2.text_input("ISIN (facultatif)", placeholder="LU1681043599").strip().upper()
     t3.write("")
     t3.write("")
-    if ticker and t3.button("🔍 Vérifier", width="stretch") and online:
+    if ticker and t3.button("Vérifier", width="stretch") and online:
         with st.spinner("Recherche…"):
             st.session_state["lookup"] = market.lookup(ticker)
     info = st.session_state.get("lookup", {})
@@ -46,7 +89,7 @@ if with_title:
         info = {}
     if info:
         st.success(f"**{info.get('name')}** — dernier cours {info['last']:,.2f} {info.get('currency')}"
-                   .replace(",", " "), icon="✅")
+                   .replace(",", " "))
     elif ticker and online:
         st.caption("Cliquez sur Vérifier pour contrôler le ticker et récupérer sa devise.")
 else:
@@ -137,7 +180,7 @@ else:
                                        "Montant (EUR)": st.column_config.NumberColumn(format="%+.2f €")},
                         key="ops_editor")
     to_del = ed.loc[ed["Supprimer"], "id"].tolist()
-    if to_del and st.button(f"🗑️ Supprimer {len(to_del)} opération(s)"):
+    if to_del and st.button(f"Supprimer {len(to_del)} opération(s)"):
         manual.delete_operations(db, to_del)
         invalidate()
         st.rerun()

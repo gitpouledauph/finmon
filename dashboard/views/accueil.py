@@ -1,84 +1,148 @@
+"""Synthèse du patrimoine : total, évolution, puis répartition cliquable (catégorie > compte > lignes)."""
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 
-from common import bundle, empty_state, eur, pct, period_picker, period_start, plot, show_warnings
+import theme
+from common import bundle, empty_state, eur, get_db, pct, period_picker, period_start, plot, show_warnings
 from finmon import charts
 from finmon.analytics import budget, portfolio
 
 b = bundle()
-st.title("Vue d'ensemble")
 if not b.has_data or b.networth.empty:
+    st.title("Patrimoine")
     empty_state()
     st.stop()
-show_warnings(b)
 
 nw = b.networth.copy()
 by_bucket = nw.pivot_table(index="date", columns="bucket", values="value", aggfunc="sum").fillna(0.0).sort_index()
 total = by_bucket.sum(axis=1)
 last = total.index[-1]
+ORDER = ["Investissements", "Liquidités", "Épargne réglementée", "Autres actifs"]
 
-key = period_picker("home_period", "1A")
+# ------------------------------------------------------------- en-tête
+head, per = st.columns([3, 2], vertical_alignment="bottom")
+with per:
+    key = period_picker("home_period", "1A")
 start = period_start(key, last, total.index[0])
 t0 = total.asof(start)
+var = total.iloc[-1] - t0
+with head:
+    theme.hero("Patrimoine net", eur(total.iloc[-1]), var, f"{eur(var, sign=True)} ({pct(var / t0) if t0 else '—'})",
+               f"sur {key}")
+show_warnings(b, "home")
 
 pf = portfolio.summary(b.portfolio) if not b.portfolio.accounts.empty else {}
+
+# ------------------------------------------------------------- évolution
+view = by_bucket[by_bucket.index >= start]
+order = [c for c in ORDER if c in view.columns]
+plot(charts.line(view, order, height=340, area=True), key="nw")
+
+# ------------------------------------------------------------- répartition cliquable
+st.subheader("Répartition")
+st.caption("Cliquez sur une catégorie pour voir les comptes qui la composent, puis sur un compte pour voir son détail.")
+cur = nw[nw["date"] == last]
+cur = cur[cur["value"].abs() > 0.5]
+cats = (cur.groupby("bucket")["value"].sum().reindex([c for c in ORDER if c in set(cur["bucket"])]).dropna()
+        .rename("Montant").to_frame())
+cats["Part"] = cats["Montant"] / cats["Montant"].sum() * 100
+cats["Comptes"] = cur.groupby("bucket")["account_id"].nunique()
+cats = cats.reset_index().rename(columns={"bucket": "Catégorie"})
+
+MONEY = st.column_config.NumberColumn(format="%,.0f €")
+SHARE = st.column_config.ProgressColumn(format="%.1f %%", min_value=0, max_value=100)
+
+left, right = st.columns([2, 3])
+with left:
+    ev = st.dataframe(cats[["Catégorie", "Montant", "Part", "Comptes"]], hide_index=True, width="stretch",
+                      on_select="rerun", selection_mode="single-row", key="cat_sel",
+                      column_config={"Montant": MONEY, "Part": SHARE})
+    picked = ev.selection.rows[0] if ev.selection.rows else 0
+    cat = cats.iloc[picked]["Catégorie"]
+
+PART_LABEL = {"Espèces": "Espèces non investies", "Titres": "Titres", "Solde": "Solde"}
+with right:
+    acc = cur[cur["bucket"] == cat].copy()
+    acc["Nature"] = acc["part"].map(PART_LABEL).fillna("")
+    acc = (acc.groupby(["account_id", "name", "institution", "Nature"], dropna=False)["value"].sum()
+           .sort_values(ascending=False).reset_index())
+    acc["Part"] = acc["value"] / acc["value"].sum() * 100
+    st.markdown(f"**{cat}** · {eur(acc['value'].sum())}")
+    ev2 = st.dataframe(acc.rename(columns={"name": "Compte", "institution": "Établissement", "value": "Montant"})
+                       [["Compte", "Établissement", "Nature", "Montant", "Part"]],
+                       hide_index=True, width="stretch", on_select="rerun", selection_mode="single-row",
+                       key=f"acc_sel_{cat}", column_config={"Montant": MONEY, "Part": SHARE})
+    if cat == "Liquidités":
+        st.caption("Les espèces non investies chez un courtier (versées mais pas encore placées, ou issues d'une "
+                   "vente) comptent ici, et non dans les investissements.")
+
+# Détail d'un compte
+if ev2.selection.rows:
+    row = acc.iloc[ev2.selection.rows[0]]
+    st.markdown(f"**{row['name']}** · {row['Nature'].lower()}")
+    a_id = row["account_id"]
+    c = b.portfolio.current
+    lines = c[c["account_id"] == a_id] if not c.empty else c
+    if row["Nature"] == "Titres" and not lines.empty:
+        t = lines.assign(pv=lines["value"] - lines["cost"]).sort_values("value", ascending=False)
+        t = pd.DataFrame({"Ligne": t["name"], "Quantité": t["qty"], "PRU": t["pru"], "Cours": t["price"],
+                          "Valeur": t["value"], "Plus-value": t["pv"],
+                          "Perf.": (t["value"] / t["cost"] - 1) * 100})
+        st.dataframe(t, hide_index=True, width="stretch", column_config={
+            "Quantité": st.column_config.NumberColumn(format="%.4g"),
+            "PRU": st.column_config.NumberColumn(format="%,.2f €"),
+            "Cours": st.column_config.NumberColumn(format="%,.2f €"), "Valeur": MONEY,
+            "Plus-value": st.column_config.NumberColumn(format="%+,.0f €"),
+            "Perf.": st.column_config.NumberColumn(format="%+.1f %%")})
+    elif row["Nature"] == PART_LABEL["Espèces"]:
+        st.write(f"Espèces non investies sur ce compte : **{eur(row['value'])}**. D'où elles viennent :")
+        KIND = {"deposit": "Versements", "withdrawal": "Retraits", "buy": "Achats", "sell": "Ventes",
+                "dividend": "Dividendes", "interest": "Intérêts", "fee": "Frais", "tax": "Impôts et taxes",
+                "reward": "Récompenses"}
+        ops = get_db().read("SELECT kind, SUM(amount) AS montant, COUNT(*) AS n FROM trades "
+                            "WHERE account_id = ? GROUP BY kind", [a_id])
+        ops = ops[ops["kind"].isin(KIND)].assign(Mouvement=lambda d: d["kind"].map(KIND))
+        ops = ops.set_index("kind").reindex([k_ for k_ in KIND if k_ in set(ops["kind"])]).reset_index()
+        st.dataframe(ops.rename(columns={"montant": "Montant", "n": "Opérations"})[["Mouvement", "Opérations", "Montant"]],
+                     hide_index=True, width="content",
+                     column_config={"Montant": st.column_config.NumberColumn(format="%+,.2f €")})
+        st.caption(f"Solde = somme de ces mouvements ({eur(ops['montant'].sum(), 2)}).")
+    else:
+        st.write(f"Solde au {last:%d/%m/%Y} : **{eur(row['value'])}**.")
+        rate = b.accounts.set_index("id").get("rate")
+        if rate is not None and a_id in rate.index and rate[a_id] == rate[a_id]:
+            st.caption(f"Taux {rate[a_id]:.2f} % par an · intérêts estimés sur 12 mois : "
+                       f"{eur(row['value'] * rate[a_id] / 100)}".replace(".", ","))
+
+# ------------------------------------------------------------- performance & budget
+st.subheader("Indicateurs")
 flows = budget.monthly_flows(b.tx)
 full_months = flows[flows.index < pd.Timestamp(last.year, last.month, 1)]
 last12 = full_months.tail(12)
-
-# ------------------------------------------------------------- héros + KPIs
-c0, c1, c2, c3 = st.columns([1.4, 1, 1, 1])
-c0.metric("Patrimoine net", eur(total.iloc[-1]), f"{eur(total.iloc[-1] - t0, sign=True)} sur {key}",
-          help="Comptes courants + livrets + valeur des comptes-titres et PEA (titres + liquidités).")
-inv = by_bucket.get("Investissements", pd.Series([0.0]))
-c1.metric("Investissements", eur(inv.iloc[-1]),
-          f"{eur(pf.get('pnl_total'), sign=True)} de plus-value" if pf else None,
-          help="Plus-value totale = valeur actuelle − argent net versé (latent + réalisé + dividendes + intérêts − frais).")
-c2.metric("Épargne réglementée", eur(by_bucket.get("Épargne réglementée", pd.Series([0.0])).iloc[-1]))
-c3.metric("Liquidités", eur(by_bucket.get("Liquidités", pd.Series([0.0])).iloc[-1]))
-
-c4, c5, c6, c7 = st.columns([1.4, 1, 1, 1])
+k = st.columns(4)
+if pf:
+    k[0].metric("Plus-value investissements", eur(pf.get("pnl_total"), sign=True),
+                help="Valeur actuelle − argent net versé (latent + réalisé + dividendes + intérêts − frais).")
+    k[1].metric("Performance (TWR)", pct(pf["twr"]),
+                f"TRI {pct(pf['xirr'])} / an" if pf.get("xirr") is not None else None,
+                help="TWR : performance indépendante des versements. TRI : rendement annualisé, versements compris.")
 if not full_months.empty:
     lm = full_months.iloc[-1]
-    avg = last12["expenses"].mean()
-    c4.metric(f"Dépenses {charts.mois(full_months.index[-1])}", eur(lm["expenses"]),
-              f"{eur(lm['expenses'] - avg, sign=True)} vs moyenne 12 mois", delta_color="inverse")
-    c5.metric("Revenus (moy. 12 mois)", eur(last12["income"].mean()))
-    rate = last12["savings"].sum() / last12["income"].sum() if last12["income"].sum() else None
-    c6.metric("Taux d'épargne 12 mois", pct(rate, 0, sign=False),
-              help="(revenus − dépenses) / revenus. Les virements vers livrets/courtiers ne sont pas des dépenses.")
-if pf:
-    c7.metric("Performance (TWR)", pct(pf["twr"]), f"TRI annualisé {pct(pf['xirr'])}" if pf.get("xirr") is not None else None,
-              help="TWR : performance indépendante des versements, sur tout l'historique. "
-                   "TRI : rendement annualisé de votre argent, versements compris.")
-
-# ------------------------------------------------------------- évolution
-st.subheader("Évolution du patrimoine")
-view = by_bucket[by_bucket.index >= start]
-order = [c for c in ["Investissements", "Épargne réglementée", "Liquidités", "Autres actifs"] if c in view.columns]
-plot(charts.line(view, order, height=380, area=True), key="nw")
-
-left, right = st.columns(2)
-with left:
-    st.subheader("Par compte")
-    cur = nw[nw["date"] == last].groupby("name")["value"].sum().sort_values(ascending=False)
-    cur = cur[cur.abs() > 0.5]
-    plot(charts.hbar(cur.index, cur.values, text=[eur(v) for v in cur.values]), key="acc")
-with right:
-    st.subheader(f"Variation sur {key}")
-    by_acc = nw.pivot_table(index="date", columns="name", values="value", aggfunc="sum").ffill().fillna(0.0)
-    delta = (by_acc.iloc[-1] - by_acc.asof(start)).sort_values(ascending=False)
-    delta = delta[delta.abs() > 0.5]
-    plot(charts.signed_hbar(delta.index, delta.values), key="delta")
+    k[2].metric(f"Dépenses {charts.mois(full_months.index[-1])}", eur(lm["expenses"]),
+                f"{eur(lm['expenses'] - last12['expenses'].mean(), sign=True)} vs moy. 12 mois", delta_color="inverse")
+    rate12 = last12["savings"].sum() / last12["income"].sum() if last12["income"].sum() else None
+    k[3].metric("Taux d'épargne 12 mois", pct(rate12, 0, sign=False))
+else:
+    k[2].metric("Dépenses", "—", help="Importez les exports de compte courant Boursorama.")
+    k[3].metric("Taux d'épargne", "—")
 
 if not full_months.empty:
     st.subheader("Revenus et dépenses — 12 derniers mois")
     m = last12.rename(columns={"income": "Revenus", "expenses": "Dépenses"})
-    import plotly.graph_objects as go
-
     fig = go.Figure()
-    for c in ["Revenus", "Dépenses"]:
-        fig.add_trace(go.Bar(x=m.index, y=m[c], name=c, marker_color=charts.FIXED[c],
-                             hovertemplate="%{y:,.0f} €<extra>" + c + "</extra>"))
+    for c_ in ["Revenus", "Dépenses"]:
+        fig.add_trace(go.Bar(x=m.index, y=m[c_], name=c_, marker_color=charts.FIXED[c_],
+                             hovertemplate="%{y:,.0f} €<extra>" + c_ + "</extra>"))
     fig.update_layout(barmode="group", bargap=0.3, bargroupgap=0.08)
-    plot(charts.layout(fig, 320), key="ie")
+    plot(charts.layout(fig, 300), key="ie")

@@ -3,31 +3,34 @@ import time
 
 import streamlit as st
 
-st.set_page_config(page_title="finmon", page_icon="📊", layout="wide")
+st.set_page_config(page_title="finmon", page_icon=":material/donut_small:", layout="wide")
 
 from common import get_db, invalidate  # noqa: E402
+import theme  # noqa: E402
+
+theme.apply()
 
 P = {
-    "accueil": st.Page("views/accueil.py", title="Vue d'ensemble", icon="🏠", default=True),
-    "saisie": st.Page("views/saisie.py", title="Saisir une opération", icon="➕"),
-    "investissements": st.Page("views/investissements.py", title="Performance", icon="📈"),
-    "allocation": st.Page("views/allocation.py", title="Allocation & exposition", icon="🧭"),
-    "depenses": st.Page("views/depenses.py", title="Dépenses", icon="💸"),
-    "vacances": st.Page("views/vacances.py", title="Vacances", icon="🏖️"),
-    "revenus": st.Page("views/revenus.py", title="Revenus & épargne", icon="💰"),
-    "donnees": st.Page("views/donnees.py", title="Données & imports", icon="📥"),
+    "accueil": st.Page("views/accueil.py", title="Patrimoine", icon=":material/space_dashboard:", default=True),
+    "saisie": st.Page("views/saisie.py", title="Saisir une opération", icon=":material/edit_note:"),
+    "investissements": st.Page("views/investissements.py", title="Performance", icon=":material/show_chart:"),
+    "allocation": st.Page("views/allocation.py", title="Allocation & exposition", icon=":material/donut_large:"),
+    "depenses": st.Page("views/depenses.py", title="Dépenses", icon=":material/receipt_long:"),
+    "vacances": st.Page("views/vacances.py", title="Vacances", icon=":material/flight:"),
+    "revenus": st.Page("views/revenus.py", title="Revenus & épargne", icon=":material/savings:"),
+    "donnees": st.Page("views/donnees.py", title="Données & imports", icon=":material/database:"),
 }
 pages = {
-    "": [P["accueil"]],
-    "📈 Investissement": [P["investissements"], P["allocation"], P["saisie"]],
-    "💸 Analyse des dépenses": [P["depenses"], P["revenus"], P["vacances"]],
-    "⚙️ Données": [P["donnees"]],
+    "Synthèse": [P["accueil"]],
+    "Investissement": [P["investissements"], P["allocation"], P["saisie"]],
+    "Analyse des dépenses": [P["depenses"], P["revenus"], P["vacances"]],
+    "Données": [P["donnees"]],
 }
 
 INTERVALS = {"1 min": 60, "5 min": 300, "15 min": 900}
 
 with st.sidebar:
-    st.markdown("### 📊 finmon")
+    st.html("<div class='fm-brand'>fin<span>mon</span></div>")
     st.caption("Moniteur local — vos données restent sur cette machine.")
     choice = st.radio("Profil", ["Mes données", "Démo"], horizontal=True,
                       index=1 if st.session_state.get("profile") == "demo" else 0)
@@ -58,7 +61,7 @@ with st.sidebar:
                     changed = n > 0
                 except Exception as e:  # pas de réseau, quota…
                     st.session_state["_live_label"] = f"indisponible ({type(e).__name__})"
-            st.caption(f"🟢 Derniers cours : {st.session_state.get('_live_label', '—')}")
+            st.caption(f"Derniers cours : {st.session_state.get('_live_label', '—')}")
             full = st.session_state.get("_full_run", False)
             st.session_state["_full_run"] = False
             if changed and not full:
@@ -67,7 +70,7 @@ with st.sidebar:
 
         live_prices()
 
-    if st.button("↻ Recalculer", width="stretch"):
+    if st.button("Recalculer", width="stretch"):
         invalidate()
         st.rerun()
 

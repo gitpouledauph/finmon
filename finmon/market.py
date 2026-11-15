@@ -197,7 +197,7 @@ def resolve_all(db: DB, online: bool = True, force: bool = False) -> list[str]:
             continue
         r = resolve_instrument(isin, name, online=online)
         rows.append(r)
-        logs.append(f"{isin} → {r['ticker'] or '❓ ticker introuvable'} ({r['asset_class']})")
+        logs.append(f"{isin} → {r['ticker'] or 'ticker introuvable'} ({r['asset_class']})")
     if rows:
         db.upsert("instruments", pd.DataFrame(rows), mode="replace")
     return logs
@@ -248,7 +248,7 @@ def update_prices(db: DB) -> list[str]:
         try:
             df = _download(group, start)
         except Exception as e:
-            return [f"❌ Cours : {e}"]
+            return [f"Erreur cours : {e}"]
         n += db.upsert("prices", df, mode="replace")
     return [f"Cours mis à jour : {len(tickers)} tickers, {n} lignes"]
 
@@ -274,7 +274,7 @@ def update_fx(db: DB) -> list[str]:
         try:
             df = _download([f"EUR{c}=X" for c in group], start)
         except Exception as e:
-            return [f"❌ Change : {e}"]
+            return [f"Erreur change : {e}"]
         if df.empty:
             continue
         df["currency"] = df["symbol"].str[3:6]

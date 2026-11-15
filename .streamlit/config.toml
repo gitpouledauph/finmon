@@ -1,3 +1,6 @@
+[client]
+toolbarMode = "minimal"
+
 [browser]
 gatherUsageStats = false
 
@@ -8,6 +11,7 @@ address = "localhost"
 # Mode sombre par défaut (modifiable dans le menu ⋮ › Settings de Streamlit).
 base = "dark"
 primaryColor = "#3987e5"
-backgroundColor = "#0f1115"
-secondaryBackgroundColor = "#1a1d24"
-textColor = "#e6e4df"
+backgroundColor = "#0b0d12"
+secondaryBackgroundColor = "#151922"
+textColor = "#e8e9ed"
+borderColor = "#1f2430"

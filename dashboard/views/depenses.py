@@ -105,7 +105,7 @@ ed = st.data_editor(
         "Catégorie": st.column_config.SelectboxColumn(options=cats, required=True),
         "Vacances": st.column_config.SelectboxColumn(options=vac_names),
     }, key="editor")
-if st.button("💾 Enregistrer les corrections", type="primary"):
+if st.button("Enregistrer les corrections", type="primary"):
     orig = view.set_index("id")
     changed = []
     for r in ed.itertuples(index=False):

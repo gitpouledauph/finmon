@@ -61,17 +61,66 @@ def period_picker(key: str = "period", default: str = "1A") -> str:
 
 def empty_state(what: str = "données") -> None:
     st.info(
-        f"Pas encore de {what}. Déposez vos exports dans la page **Données**, "
-        "ou passez sur le profil **Démo** dans la barre latérale pour voir le dashboard rempli.",
-        icon="📭",
+        f"Pas encore de {what}. Importez vos exports dans **Données & imports**, "
+        "ou passez sur le profil **Démo** dans la barre latérale pour voir le dashboard rempli."
     )
 
 
-def show_warnings(b: Bundle) -> None:
-    if b.warnings:
-        with st.expander(f"⚠️ {len(b.warnings)} point(s) d'attention sur les données"):
-            for w in b.warnings:
-                st.write("• " + w)
+# ------------------------------------------------------------------ alertes
+# Les alertes masquées sont gardées dans data/<profil>/alertes_masquees.json (pas dans la base :
+# masquer une alerte ne doit pas relancer le calcul du portefeuille).
+def alert_key(text: str) -> str:
+    import hashlib
+
+    return hashlib.sha1(text.encode("utf-8")).hexdigest()[:16]
+
+
+def _alerts_path() -> Path:
+    return config.get_profile(profile_name()).data_dir / "alertes_masquees.json"
+
+
+def dismissed_alerts() -> dict[str, dict]:
+    import json
+
+    try:
+        return json.loads(_alerts_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def set_dismissed(texts: list[str], hide: bool = True) -> None:
+    import json
+
+    cur = dismissed_alerts()
+    now = pd.Timestamp.now().isoformat(timespec="seconds")
+    for t in texts:
+        if hide:
+            cur[alert_key(t)] = {"text": t, "ts": now}
+        else:
+            cur.pop(alert_key(t), None)
+    _alerts_path().write_text(json.dumps(cur, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def show_warnings(b: Bundle, where: str = "page") -> None:
+    """Points d'attention sur les données, chacun masquable."""
+    if not b.warnings:
+        return
+    hidden = dismissed_alerts()
+    active = [w for w in dict.fromkeys(b.warnings) if alert_key(w) not in hidden]
+    if not active:
+        return
+    n = len(active)
+    with st.expander(f"{n} point{'s' if n > 1 else ''} d'attention sur les données"):
+        for w in active:
+            c1, c2 = st.columns([12, 2], vertical_alignment="center")
+            c1.markdown(w)
+            if c2.button("Masquer", key=f"dismiss-{where}-{alert_key(w)}", width="stretch"):
+                set_dismissed([w])
+                st.rerun()
+        if n > 1 and st.button("Tout masquer", key=f"dismiss-all-{where}", type="tertiary"):
+            set_dismissed(active)
+            st.rerun()
+        st.caption("Les alertes masquées se réaffichent dans Données & imports › État des données.")
 
 
 def kpi(col, label: str, value: str, delta: str | None = None, help: str | None = None, delta_color: str = "normal"):

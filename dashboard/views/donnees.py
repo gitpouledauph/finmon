@@ -5,7 +5,7 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
-from common import ROOT, bundle, config, get_db, invalidate, profile_name
+from common import ROOT, bundle, config, dismissed_alerts, get_db, invalidate, profile_name, set_dismissed
 
 st.title("Données & imports")
 profile = config.get_profile(profile_name())
@@ -14,7 +14,7 @@ if profile.name == "demo":
     st.warning("Vous êtes sur le profil **Démo**. Repassez sur « Mes données » dans la barre latérale pour importer vos fichiers.")
 
 tab_imp, tab_inst, tab_state, tab_exp = st.tabs(
-    ["📄 Import historique (une fois)", "🏷️ Titres", "🔎 État des données", "📤 Export"])
+    ["Import historique", "Titres", "État des données", "Export"])
 
 # ------------------------------------------------------------- import historique
 with tab_imp:
@@ -24,9 +24,9 @@ with tab_imp:
         "**Une seule fois** : importez l'historique de chaque compte. Ensuite, ajoutez vos nouvelles opérations "
         "dans **Saisir une opération** — plus aucune connexion n'est nécessaire. "
         "Le format est reconnu automatiquement et ré-importer un fichier ne crée pas de doublons.")
-    with st.expander("📘 Quel fichier pour chaque compte ?", expanded=True):
+    with st.expander("Quel fichier pour chaque compte ?", expanded=True):
         st.markdown((ROOT / "docs" / "GUIDE_CSV.md").read_text(encoding="utf-8"))
-    st.download_button("⬇️ Modèle CSV finmon (pour tout autre courtier ou une saisie en masse)",
+    st.download_button("Modèle CSV finmon (pour tout autre courtier ou une saisie en masse)",
                        manual.template_csv().encode("utf-8-sig"), file_name="modele-finmon.csv", mime="text/csv")
     hint = st.radio("Pour un fichier Boursorama de titres (positions / mouvements), il s'agit du…",
                     ["PEA", "Compte-titres (CTO)"], horizontal=True)
@@ -55,18 +55,18 @@ with tab_imp:
         warn = db.read("SELECT file, message FROM import_log WHERE status IN ('warning','error') "
                        "ORDER BY ts DESC LIMIT 10")
         if not warn.empty:
-            with st.expander("⚠️ Points d'attention de l'import"):
+            with st.expander("Points d'attention de l'import"):
                 st.dataframe(warn, hide_index=True, width="stretch")
     st.divider()
     st.markdown(f"Autre possibilité : copier les fichiers dans `{profile.inbox}` puis cliquer :")
     c1, c2 = st.columns(2)
-    if c1.button("📥 Importer la boîte de dépôt"):
+    if c1.button("Importer la boîte de dépôt"):
         from finmon.sync import import_inbox
 
         for line in import_inbox(profile, db, online=profile.name != "demo") or ["Boîte de dépôt vide."]:
             st.write(line)
         invalidate()
-    if c2.button("🌐 Mettre à jour l'historique des cours & changes", disabled=profile.name == "demo",
+    if c2.button("Mettre à jour l'historique des cours & changes", disabled=profile.name == "demo",
                  help="Seuls les tickers et paires de devises sont envoyés à Yahoo Finance."):
         from finmon.sync import refresh_prices
 
@@ -88,7 +88,7 @@ with tab_inst:
                             column_config={"asset_class": st.column_config.SelectboxColumn(
                                 options=["Actions", "Obligations", "Monétaire", "Crypto", "Matières premières", "Immobilier"])},
                             key="inst_editor")
-        if st.button("💾 Enregistrer les titres"):
+        if st.button("Enregistrer les titres"):
             bad = []
             for c in ("exposure", "regions", "sectors"):
                 for v, isin in zip(ed[c], ed["isin"]):
@@ -119,6 +119,17 @@ with tab_state:
     st.write(f"Derniers cours en base : **{last_px or '—'}**")
     st.markdown("**Journal des imports**")
     st.dataframe(b.import_log, hide_index=True, width="stretch")
+    hidden = dismissed_alerts()
+    st.markdown(f"**Alertes masquées** ({len(hidden)})")
+    if hidden:
+        for k, v in hidden.items():
+            c1, c2 = st.columns([12, 2], vertical_alignment="center")
+            c1.caption(f"{v['text']} — masquée le {pd.Timestamp(v['ts']):%d/%m/%Y}")
+            if c2.button("Réafficher", key=f"undismiss-{k}", width="stretch"):
+                set_dismissed([v["text"]], hide=False)
+                st.rerun()
+    else:
+        st.caption("Aucune.")
 
 # ------------------------------------------------------------- export
 with tab_exp:
@@ -128,6 +139,6 @@ with tab_exp:
     if st.button("Préparer l'export Excel"):
         buf = io.BytesIO()
         export_excel(bundle(), buf)
-        st.download_button("⬇️ Télécharger", buf.getvalue(), file_name=f"finmon-{datetime.now():%Y%m%d}.xlsx",
+        st.download_button("Télécharger", buf.getvalue(), file_name=f"finmon-{datetime.now():%Y%m%d}.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     st.caption(f"La base complète est un simple fichier SQLite : `{profile.db_path}`")

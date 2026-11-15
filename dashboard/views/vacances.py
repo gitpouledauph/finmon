@@ -15,7 +15,7 @@ db = get_db()
 vac = b.vacations.copy()
 
 # ------------------------------------------------------------- périodes
-with st.expander("🗓️ Mes périodes de vacances", expanded=vac.empty):
+with st.expander("Mes périodes de vacances", expanded=vac.empty):
     st.caption("Toute dépense pendant une période compte pour le voyage (hors loyer, abonnements, impôts…). "
                "Les achats faits avant (billets, hôtels) se rattachent depuis la page Dépenses, colonne « Vacances ».")
     edit = st.data_editor(
@@ -27,7 +27,7 @@ with st.expander("🗓️ Mes périodes de vacances", expanded=vac.empty):
                        "start": st.column_config.DateColumn("Début", format="DD/MM/YYYY", required=True),
                        "end": st.column_config.DateColumn("Fin", format="DD/MM/YYYY", required=True),
                        "note": st.column_config.TextColumn("Note")}, key="vac_editor")
-    if st.button("💾 Enregistrer les périodes", type="primary"):
+    if st.button("Enregistrer les périodes", type="primary"):
         e = edit.dropna(subset=["name", "start", "end"]).copy()
         e["start"] = pd.to_datetime(e["start"]).dt.strftime("%Y-%m-%d")
         e["end"] = pd.to_datetime(e["end"]).dt.strftime("%Y-%m-%d")

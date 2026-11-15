@@ -7,7 +7,7 @@ from finmon import charts
 from finmon.analytics import portfolio
 
 b = bundle()
-st.title("Investissements")
+st.title("Performance des investissements")
 pf = b.portfolio
 if pf.accounts.empty:
     empty_state("comptes d'investissement")

@@ -55,18 +55,30 @@ def cash_balances(accounts: pd.DataFrame, tx: pd.DataFrame, snaps: pd.DataFrame,
 
 
 def networth(accounts: pd.DataFrame, cash: pd.DataFrame, invest: pd.DataFrame) -> pd.DataFrame:
-    """Patrimoine quotidien par compte : date, account_id, name, type, bucket, value."""
+    """Patrimoine quotidien par compte : date, account_id, part, name, type, bucket, value.
+
+    part : « Solde » (compte bancaire, livret), « Titres » ou « Espèces » (compte d'investissement).
+    Les espèces non investies d'un courtier comptent dans les Liquidités."""
     parts = []
     if not cash.empty:
-        parts.append(cash.rename(columns={"balance": "value"})[["date", "account_id", "value"]])
+        parts.append(cash.rename(columns={"balance": "value"})[["date", "account_id", "value"]].assign(part="Solde"))
     if invest is not None and not invest.empty:
-        parts.append(invest.rename(columns={"total": "value"})[["date", "account_id", "value"]])
+        # Comptes d'investissement : titres d'un côté, espèces non investies de l'autre (→ Liquidités).
+        if {"securities", "cash"} <= set(invest.columns):
+            parts.append(invest.rename(columns={"securities": "value"})[["date", "account_id", "value"]]
+                         .assign(part="Titres"))
+            parts.append(invest.rename(columns={"cash": "value"})[["date", "account_id", "value"]]
+                         .assign(part="Espèces"))
+        else:
+            parts.append(invest.rename(columns={"total": "value"})[["date", "account_id", "value"]]
+                         .assign(part="Titres"))
     if not parts:
-        return pd.DataFrame(columns=["date", "account_id", "value", "name", "type", "bucket"])
+        return pd.DataFrame(columns=["date", "account_id", "value", "part", "name", "type", "bucket"])
     nw = pd.concat(parts, ignore_index=True)
     nw["date"] = pd.to_datetime(nw["date"])
     # On ne garde que la période où toutes les séries existent pour un cumul honnête.
     nw = nw.merge(accounts.rename(columns={"id": "account_id"})[["account_id", "name", "type", "institution"]],
                   on="account_id", how="left")
     nw["bucket"] = nw["type"].map(BUCKET).fillna("Autres actifs")
+    nw.loc[nw["part"] == "Espèces", "bucket"] = "Liquidités"
     return nw

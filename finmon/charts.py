@@ -15,7 +15,7 @@ GRID = "rgba(137,135,129,0.25)"
 SEQ_LIGHT = [[0, "#f4f8fd"], [0.25, "#b7d3f6"], [0.5, "#6da7ec"], [0.75, "#2a78d6"], [1, "#104281"]]
 SEQ_DARK = [[0, "#1a2433"], [0.25, "#1d4a85"], [0.5, "#2a78d6"], [0.75, "#6da7ec"], [1, "#cfe1f9"]]
 THEME = "dark"  # le dashboard est en mode sombre (.streamlit/config.toml)
-FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
+FONT = 'Inter, system-ui, -apple-system, "Segoe UI", sans-serif'
 
 # Couleurs fixes par entité : une couleur suit toujours la même chose.
 FIXED = {

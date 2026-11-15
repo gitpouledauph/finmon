@@ -21,14 +21,14 @@ def import_inbox(profile: Profile, db: DB, online: bool = True) -> list[str]:
         folder = path.parent.name.lower()
         try:
             kind, n = import_any(db, path, account_hint=path.name, online=online)
-            logs.append(f"✅ {path.name} : {kind}, {n} nouvelles lignes")
+            logs.append(f"OK — {path.name} : {kind}, {n} nouvelles lignes")
             stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
             dest = profile.archive / folder / f"{stamp}_{path.name}"
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(str(path), dest)
         except Exception as e:  # on continue avec les autres fichiers
             db.log(folder, path.name, 0, "error", str(e))
-            logs.append(f"❌ {path.name} : {e}")
+            logs.append(f"Erreur — {path.name} : {e}")
     return logs
 
 

@@ -240,3 +240,20 @@ def test_boursorama_positions_comptables(tmp_path):
     assert s.loc["FR001400AEE3", "quantity"] == pytest.approx(2.5)
     assert s.loc["FR0011871128", "avg_cost"] == pytest.approx(45.0)
     assert s.loc["FR0011871128", "value"] == pytest.approx(500.0)
+
+
+def test_save_holdings_crypto_full_statement(tmp_path):
+    from datetime import date as _d
+
+    db = _db_with_market(tmp_path)
+    db.upsert("accounts", pd.DataFrame([{"id": "binance", "institution": "Binance", "name": "Binance",
+                                         "type": "crypto", "currency": "EUR"}]))
+    lines = pd.DataFrame({"ticker": ["BTC", "SOL", "ETH"], "isin": ["", "", ""], "name": ["", "", ""],
+                          "quantity": [0.19, 4.5, None]})
+    n = manual.save_holdings(db, "binance", _d(2026, 11, 15), lines, crypto=True, online=False)
+    s = db.read("SELECT isin, quantity FROM position_snapshots").set_index("isin")["quantity"]
+    assert n == 2 and s["CRYPTO-SOL"] == 4.5 and "CRYPTO-ETH" not in s   # quantité vide = ligne sortie
+    assert db.read("SELECT ticker FROM instruments WHERE isin='CRYPTO-SOL'")["ticker"][0] == "SOL-USD"
+    # Ré-enregistrer le même jour remplace le relevé.
+    manual.save_holdings(db, "binance", _d(2026, 11, 15), lines.iloc[:1], crypto=True, online=False)
+    assert len(db.read("SELECT * FROM position_snapshots")) == 1
