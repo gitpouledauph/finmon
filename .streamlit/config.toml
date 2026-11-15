@@ -5,4 +5,9 @@ gatherUsageStats = false
 address = "localhost"
 
 [theme]
-primaryColor = "#2a78d6"
+# Mode sombre par défaut (modifiable dans le menu ⋮ › Settings de Streamlit).
+base = "dark"
+primaryColor = "#3987e5"
+backgroundColor = "#0f1115"
+secondaryBackgroundColor = "#1a1d24"
+textColor = "#e6e4df"

@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS accounts (
     institution TEXT NOT NULL,
     name TEXT NOT NULL,
     type TEXT NOT NULL,          -- courant | livret | pea | cto | assurance_vie | autre
-    currency TEXT NOT NULL DEFAULT 'EUR'
+    currency TEXT NOT NULL DEFAULT 'EUR',
+    rate REAL                    -- taux annuel en % (livrets), facultatif
 );
 
 -- Opérations des comptes bancaires (courant, livrets, cash Trade Republic)
@@ -130,6 +131,10 @@ class DB:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as con:
             con.executescript(SCHEMA)
+            # Migrations légères des bases créées par une version antérieure.
+            cols = {r[1] for r in con.execute("PRAGMA table_info(accounts)")}
+            if "rate" not in cols:
+                con.execute("ALTER TABLE accounts ADD COLUMN rate REAL")
 
     @contextmanager
     def connect(self):

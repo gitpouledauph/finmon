@@ -58,7 +58,7 @@ L'historique est téléchargé et importé directement. Ensuite, coupez le lien 
 Un fichier par compte (courant, Livret A, LDDS…). Le fichier commence par `dateOp;dateVal;label;…`.
 Pour suivre les dépenses ensuite, refaites cet export une fois par mois (le dernier mois suffit).
 
-**PEA / compte-titres** : depuis **Bourse › Mon portefeuille**, exportez si possible
+**PEA / compte-titres** : depuis **Bourse › Mon portefeuille › Exporter** (« positions comptables », fichier `export-positions-comptables-….csv`), et si possible
 - les **positions** (titre, ISIN, quantité, cours, prix de revient) ;
 - l'**historique des opérations** (achats, ventes, dividendes).
 

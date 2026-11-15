@@ -1,0 +1,4 @@
+name;isin;quantity;buyingPrice;lastPrice;intradayVariation;amount;amountVariation;variation;lastMovementDate;compensation
+"AMUNDI PEA S&P 500 UCITS ETF ACC";FR0011871128;10,00;45,00;50,00;0,50;500,00;50,00;11,11;2025-11-05;
+THALES;FR0000121329;1,00;200,00;250,00;-0,13;250,00;50,00;25,00;2025-06-23;
+"PEA PROFILE EQUILIBRE C";FR001400AEE3;2,50;100,00;120,00;0,80;300,00;50,00;20,00;2025-06-18;

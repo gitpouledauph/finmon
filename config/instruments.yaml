@@ -22,4 +22,10 @@
 # aliases:
 #   "AMUNDI MSCI WORLD": LU1681043599
 
+IE00B53L3W79:  # iShares Core EURO STOXX 50 (Acc) — introuvable par recherche ISIN
+  ticker: CSX5.AS
+  asset_class: Actions
+  exposure: {EUR: 1.0}
+  regions: {Europe: 1.0}
+
 aliases: {}

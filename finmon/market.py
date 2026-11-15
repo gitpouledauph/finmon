@@ -116,13 +116,14 @@ def _search_ticker(isin: str) -> tuple[str | None, dict]:
     return quotes[0].get("symbol"), quotes[0]
 
 
-def resolve_instrument(isin: str, name: str, online: bool = True) -> dict:
+def resolve_instrument(isin: str, name: str, online: bool = True, ticker: str | None = None) -> dict:
+    """`ticker` : cotation connue par la source (ex. IBKR indique la bourse d'achat), prioritaire sur la recherche."""
     conf = (config.instruments_config() or {}).get(isin, {}) or {}
-    row = {"isin": isin, "name": conf.get("name") or name, "ticker": conf.get("ticker"),
+    row = {"isin": isin, "name": conf.get("name") or name, "ticker": conf.get("ticker") or ticker,
            "currency": conf.get("currency"), "asset_class": conf.get("asset_class"),
            "region": None, "sector": conf.get("sector"),
            "exposure": conf.get("exposure"), "regions": conf.get("regions"), "sectors": conf.get("sectors"),
-           "resolved_by": "config" if conf else None}
+           "resolved_by": "config" if conf else ("source" if ticker else None)}
     quote: dict = {}
     # Identifiants internes : CRYPTO-BTC (Binance), TICKER:AAPL (saisie sans ISIN), IBKR:XYZ,
     # et pseudo-ISIN crypto de Trade Republic : XF000BTC0017 -> BTC

@@ -80,9 +80,34 @@ COLS = {
     "discriminator": ("datadiscriminator", "discriminateurdedonnees", "discriminateur"),
     "security_id": ("securityid", "iddutitre", "identifiantdutitre", "identifiantdetitre", "idtitre",
                     "identifiantdesecurite", "isin"),
+    "exchange": ("listingexch", "listedesbourses", "bourse", "bourses", "exchange"),
     "field": ("fieldname", "nomchamp", "nomduchamp"),
     "value": ("fieldvalue", "valeurchamp", "valeurduchamp"),
 }
+
+
+# Bourse IBKR -> suffixe Yahoo Finance (cotation dans la devise réellement payée).
+EXCHANGE_SUFFIX = {
+    "NASDAQ": "", "NYSE": "", "ARCA": "", "AMEX": "", "BATS": "", "NYSEARCA": "", "ISLAND": "", "PINK": "",
+    "LSE": ".L", "LSEETF": ".L", "LSEIOB1": ".IL", "BVME": ".MI", "SBF": ".PA", "ENEXT": ".PA", "AEB": ".AS",
+    "IBIS": ".DE", "IBIS2": ".DE", "XETRA": ".DE", "FWB": ".F", "FWB2": ".F", "GETTEX": ".DE", "SWX": ".SW",
+    "EBS": ".SW", "BM": ".MC", "SFB": ".ST", "CPH": ".CO", "OSE": ".OL", "VSE": ".VI", "TSE": ".TO",
+    "TSEJ": ".T", "SEHK": ".HK", "ASX": ".AX", "SGX": ".SI",
+}
+SPECIAL_ENEXT = {"ENEXT.BE": ".BR", "ENEXT.AS": ".AS", "ENEXT.PT": ".LS"}
+
+
+def yahoo_ticker(symbol: str, exchange: str) -> str | None:
+    ex = (exchange or "").strip().upper().split(",")[0]
+    if not symbol or not ex:
+        return None
+    suffix = SPECIAL_ENEXT.get(ex)
+    if suffix is None:
+        suffix = EXCHANGE_SUFFIX.get(ex, EXCHANGE_SUFFIX.get(ex.split(".")[0]))
+    if suffix is None:
+        return None
+    sym = symbol.replace(" ", "-") if suffix == "" else symbol.split(" ")[0]
+    return sym + suffix
 
 
 def _get(rec: dict, key: str) -> str:
@@ -153,10 +178,16 @@ def import_statement(db: DB, text: str, source: str = "", online: bool = True) -
               mode="ignore")
 
     isin_of: dict[str, str] = {}
+    yticker: dict[str, str] = {}
+    label: dict[str, str] = {}
     for r in secs.get("instruments", []):
         sym, sid = _get(r, "symbol"), _get(r, "security_id")
         if sym:
             isin_of[sym] = sid if ISIN_RE.match(sid) else f"IBKR:{sym}"
+            label[sym] = _get(r, "description") or sym
+            t = yahoo_ticker(sym, _get(r, "exchange"))
+            if t:
+                yticker[sym] = t
 
     rows: list[dict] = []
 
@@ -229,11 +260,13 @@ def import_statement(db: DB, text: str, source: str = "", online: bool = True) -
         warnings.append("Taux de change introuvable pour certaines opérations (hors ligne ?) : relancez l'import connecté.")
     inst = out.dropna(subset=["symbol"]).drop_duplicates("isin")
     if not inst.empty:
-        known = set(db.read("SELECT isin FROM instruments")["isin"])
+        known = db.read("SELECT isin, resolved_by FROM instruments").set_index("isin")["resolved_by"].to_dict()
         new = []
         for r in inst.itertuples():
-            if r.isin not in known:
-                row = market.resolve_instrument(r.isin, r.symbol, online=online)
+            t = yticker.get(r.symbol)
+            # Nouveau titre, ou titre déjà résolu par recherche alors qu'IBKR donne la bourse exacte.
+            if r.isin not in known or (t and (pd.isna(known[r.isin]) or known[r.isin] in ("yahoo", "ticker"))):
+                row = market.resolve_instrument(r.isin, label.get(r.symbol, r.symbol), online=online, ticker=t)
                 if not row.get("ticker") or r.isin.startswith("IBKR:"):
                     row["ticker"] = row.get("ticker") or r.symbol
                 new.append(row)

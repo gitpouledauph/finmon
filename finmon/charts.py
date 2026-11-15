@@ -10,6 +10,11 @@ OTHER = "#a8a7a1"
 GOOD, BAD = "#0ca30c", "#d03b3b"
 MUTED = "#898781"
 GRID = "rgba(137,135,129,0.25)"
+# Rampe séquentielle (une teinte) : du plus faible au plus fort, contre le fond.
+# En sombre, les faibles valeurs se fondent dans le fond et les fortes s'éclaircissent.
+SEQ_LIGHT = [[0, "#f4f8fd"], [0.25, "#b7d3f6"], [0.5, "#6da7ec"], [0.75, "#2a78d6"], [1, "#104281"]]
+SEQ_DARK = [[0, "#1a2433"], [0.25, "#1d4a85"], [0.5, "#2a78d6"], [0.75, "#6da7ec"], [1, "#cfe1f9"]]
+THEME = "dark"  # le dashboard est en mode sombre (.streamlit/config.toml)
 FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 
 # Couleurs fixes par entité : une couleur suit toujours la même chose.
@@ -151,7 +156,7 @@ def heatmap(df: pd.DataFrame, height=None) -> go.Figure:
     """Catégories × mois, rampe séquentielle bleue (une seule teinte)."""
     fig = go.Figure(go.Heatmap(
         z=df.values, x=[d.strftime("%m/%y") for d in df.columns], y=list(df.index),
-        colorscale=[[0, "#f4f8fd"], [0.25, "#b7d3f6"], [0.5, "#6da7ec"], [0.75, "#2a78d6"], [1, "#104281"]],
+        colorscale=SEQ_DARK if THEME == "dark" else SEQ_LIGHT,
         xgap=2, ygap=2, hovertemplate="%{y} · %{x} : %{z:,.0f} €<extra></extra>",
         colorbar=dict(title=None, ticksuffix=" €", thickness=10),
     ))

@@ -6,7 +6,10 @@ Trois formats sont reconnus automatiquement :
   Exporter » : colonnes dateOp;dateVal;label;category;categoryParent;
   supplierFound;amount;comment;accountNum;accountLabel;accountbalance.
 * **Positions** d'un PEA/CTO — colonnes du type libellé / ISIN / quantité /
-  cours / prix de revient / valorisation.
+  cours / prix de revient / valorisation. L'export « positions comptables »
+  de BoursoBank (Bourse › Portefeuille › Exporter) a les colonnes
+  name;isin;quantity;buyingPrice;lastPrice;intradayVariation;amount;
+  amountVariation;variation;lastMovementDate;compensation.
 * **Mouvements** d'un PEA/CTO — colonnes du type date / opération / libellé /
   quantité / cours / montant.
 
@@ -206,7 +209,9 @@ def import_positions(db: DB, df: pd.DataFrame, source: str = "", account_hint: s
     c_value = pick(df, "valorisation", "montant", "amount", "valeur totale", "evaluation")
     hint = account_hint or source
     acc = _envelope_account(db, hint, source)
-    d = snapshot_date or date.today().isoformat()
+    # « export-positions-comptables-01-02-2026_10-00-00.csv » : la date de l'export est dans le nom.
+    m = re.search(r"(\d{2})-(\d{2})-(\d{4})", source or "")
+    d = snapshot_date or (f"{m.group(3)}-{m.group(2)}-{m.group(1)}" if m else date.today().isoformat())
 
     rows = []
     unresolved = []
@@ -228,7 +233,35 @@ def import_positions(db: DB, df: pd.DataFrame, source: str = "", account_hint: s
     if unresolved:
         db.log("boursorama", source, 0, "warning",
                "ISIN introuvable pour : " + ", ".join(unresolved) + " — ajoutez-les dans config/instruments.yaml > aliases")
-    return db.upsert("position_snapshots", pd.DataFrame(rows), mode="replace")
+    n = db.upsert("position_snapshots", pd.DataFrame(rows), mode="replace")
+    c_last = pick(df, "lastMovementDate", "dernier mouvement", "date dernier mouvement", "dernier mvt")
+    if c_last and rows:
+        _entries_from_positions(db, acc, pd.DataFrame(rows), df[c_last], source)
+    return n
+
+
+def _entries_from_positions(db: DB, acc: str, snap: pd.DataFrame, last_moves: pd.Series, source: str) -> None:
+    """Sans historique d'opérations, chaque ligne entre en portefeuille à sa date de « dernier mouvement »,
+    pour son prix de revient : la plus-value latente est exacte, la courbe de valeur est approchée.
+    Ces entrées (source « positions:… ») sont remplacées dès qu'un historique de mouvements est importé."""
+    real = db.read("SELECT COUNT(*) n FROM trades WHERE account_id = ? AND source NOT LIKE 'positions:%'", [acc])
+    if real["n"].iloc[0]:
+        return
+    db.execute("DELETE FROM trades WHERE account_id = ? AND source LIKE 'positions:%'", [acc])
+    d = to_dates(last_moves.reset_index(drop=True))
+    snap = snap.reset_index(drop=True).assign(d=d)
+    snap = snap.dropna(subset=["d", "quantity", "avg_cost"])
+    if snap.empty:
+        return
+    out = pd.DataFrame({
+        "account_id": acc, "date": snap["d"].dt.strftime("%Y-%m-%d"), "kind": "buy",
+        "isin": snap["isin"], "name": snap["name"], "quantity": snap["quantity"],
+        "amount": -(snap["quantity"] * snap["avg_cost"]), "fees": 0.0, "taxes": 0.0,
+        "source": "positions:" + source,
+    })
+    out["id"] = stable_ids(out, ["account_id", "isin", "source"], "bourso-pos")
+    db.upsert("trades", out[["id", "account_id", "date", "kind", "isin", "name", "quantity", "amount", "fees",
+                             "taxes", "source"]])
 
 
 MOUV_KIND = [
@@ -254,6 +287,8 @@ def _mouv_kind(s: str) -> str | None:
 
 
 def import_mouvements(db: DB, df: pd.DataFrame, source: str = "", account_hint: str | None = None) -> int:
+    acc0 = _envelope_account(db, account_hint or source, source)
+    db.execute("DELETE FROM trades WHERE account_id = ? AND source LIKE 'positions:%'", [acc0])
     c_date = pick(df, "date", "date opération", "dateOp", "date d'exécution", "date execution")
     c_op = pick(df, "opération", "operation", "sens", "type")
     c_name = pick(df, "libellé", "libelle", "valeur", "nom", "titre", "name")

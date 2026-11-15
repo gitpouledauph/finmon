@@ -203,3 +203,40 @@ def test_binance_spot_trades_french(tmp_path):
     sell = t[(t["kind"] == "sell") & (t["date"] == "2026-01-19")]
     assert sell["amount"].iloc[0] == pytest.approx(1350.00 / 1.25)
     assert db.read("SELECT COUNT(*) n FROM trades WHERE isin = 'CRYPTO-USDC'")["n"][0] == 0
+
+
+def test_ibkr_french_2026_trades_and_exchanges(tmp_path):
+    db = _db_with_market(tmp_path)
+    days = pd.date_range("2026-01-01", "2026-12-31").strftime("%Y-%m-%d")
+    db.upsert("fx_rates", pd.DataFrame({"currency": "USD", "date": days, "rate": 1.25}), mode="replace")
+    text = (FIX / "ibkr_activity_fr_2026.csv").read_text(encoding="utf-8")
+    n, warn = ibkr.import_statement(db, text, online=False)
+    t = db.read("SELECT kind, isin, quantity, amount FROM trades ORDER BY date, kind").set_index(["kind", "isin"])
+    assert n == 5  # 2 achats, 1 versement, 1 intérêt, 1 retenue — pas de ligne Forex
+    assert t.loc[("buy", "IE00BYZK4552"), "amount"] == pytest.approx(-185.0)
+    assert t.loc[("buy", "US02079K3059"), "amount"] == pytest.approx(-701 / 1.25)
+    inst = db.read("SELECT isin, ticker FROM instruments").set_index("isin")["ticker"]
+    assert inst["IE00BYZK4552"] == "RBOT.MI" and inst["US02079K3059"] == "GOOGL"   # bourse d'achat
+    snap = db.read("SELECT isin, quantity, date FROM position_snapshots")
+    assert set(snap["date"]) == {"2026-11-13"} and len(snap) == 2
+
+
+def test_ibkr_exchange_to_yahoo():
+    assert ibkr.yahoo_ticker("RBOT", "BVME.ETF") == "RBOT.MI"
+    assert ibkr.yahoo_ticker("JEDG", "LSEETF") == "JEDG.L"
+    assert ibkr.yahoo_ticker("BRK B", "NYSE") == "BRK-B"
+    assert ibkr.yahoo_ticker("MC", "SBF") == "MC.PA"
+    assert ibkr.yahoo_ticker("XYZ", "INCONNUE") is None
+
+
+def test_boursorama_positions_comptables(tmp_path):
+    db = DB(tmp_path / "t.db")
+    p = FIX / "boursorama_export-positions-comptables-01-02-2026_10-00-00.csv"
+    df = read_csv_auto(p)
+    assert boursorama.detect(df) == "positions"
+    n = boursorama.import_positions(db, df, source=p.name, account_hint="pea")
+    s = db.read("SELECT * FROM position_snapshots").set_index("isin")
+    assert n == 3 and set(s["account_id"]) == {"bourso:pea"} and set(s["date"]) == {"2026-02-01"}
+    assert s.loc["FR001400AEE3", "quantity"] == pytest.approx(2.5)
+    assert s.loc["FR0011871128", "avg_cost"] == pytest.approx(45.0)
+    assert s.loc["FR0011871128", "value"] == pytest.approx(500.0)

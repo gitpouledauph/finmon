@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from common import bundle, empty_state, eur, get_db, invalidate, plot
-from finmon import charts
+from finmon import charts, config
 from finmon.analytics import budget
 
 b = bundle()
@@ -51,20 +51,38 @@ if not liv.empty:
     piv = liv.pivot_table(index="date", columns="account_id", values="balance").rename(columns=names.to_dict())
     plot(charts.line(piv, list(piv.columns), area=True), key="liv")
     last = liv.sort_values("date").groupby("account_id").tail(1)
-    st.dataframe(pd.DataFrame({"Livret": last["account_id"].map(names), "Solde": last["balance"],
-                               "Au": last["date"]}), hide_index=True,
+    rates = b.accounts.set_index("id")["rate"] if "rate" in b.accounts else pd.Series(dtype=float)
+    tab = pd.DataFrame({"Livret": last["account_id"].map(names), "Solde": last["balance"],
+                        "Taux": last["account_id"].map(rates), "Au": last["date"]})
+    tab["Intérêts / an"] = tab["Solde"] * tab["Taux"].fillna(0) / 100
+    k1, k2, k3 = st.columns(3)
+    k1.metric("Total épargne réglementée", eur(tab["Solde"].sum()))
+    k2.metric("Intérêts estimés sur 12 mois", eur(tab["Intérêts / an"].sum()),
+              help="Solde actuel × taux en vigueur, sans versement ni changement de taux. "
+                   "Les intérêts sont versés au 31 décembre, calculés par quinzaine.")
+    reg = config.settings().get("taux_reglementes") or {}
+    if reg:
+        k3.metric("Taux Livret A / LDDS", f"{reg.get('Livret A', 0):.2f} %".replace(".", ","),
+                  help=f"En vigueur depuis le {pd.Timestamp(reg.get('date')).strftime('%d/%m/%Y')} "
+                       "(config/settings.yaml › taux_reglementes).")
+    st.dataframe(tab, hide_index=True,
                  column_config={"Solde": st.column_config.NumberColumn(format="%.2f €"),
+                                "Taux": st.column_config.NumberColumn(format="%.2f %%"),
+                                "Intérêts / an": st.column_config.NumberColumn(format="%.2f €"),
                                 "Au": st.column_config.DateColumn(format="DD/MM/YYYY")})
 
 with st.form("manual"):
     st.markdown("**Saisir un solde à la main** — pour un livret ou un compte qui n'est pas chez Boursorama "
                 "(chaque saisie ajoute un point ; le solde est conservé entre deux saisies).")
-    c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
+    c1, c2, c3, c4, c5 = st.columns([2, 1, 1, 1, 1])
     existing = b.accounts[b.accounts["id"].str.startswith("manuel:")]
     name = c1.text_input("Nom du compte", placeholder="ex. LDDS Crédit Agricole")
     kind = c2.selectbox("Type", ["livret", "courant", "autre"])
     bal = c3.number_input("Solde (€)", step=100.0)
-    d = c4.date_input("Date", value=date.today(), format="DD/MM/YYYY")
+    default_rate = float((config.settings().get("taux_reglementes") or {}).get("Livret A", 0.0))
+    rate = c4.number_input("Taux (% / an)", value=default_rate, step=0.05, format="%.2f",
+                           help="Livret A et LDDS : même taux réglementé. Mettez 0 pour un compte courant.")
+    d = c5.date_input("Date", value=date.today(), format="DD/MM/YYYY")
     if not existing.empty:
         st.caption("Comptes manuels existants : " + ", ".join(existing["name"]))
     if st.form_submit_button("Ajouter") and name:
@@ -72,6 +90,7 @@ with st.form("manual"):
         db = get_db()
         db.upsert("accounts", pd.DataFrame([{"id": acc_id, "institution": "Saisie manuelle", "name": name.strip(),
                                              "type": kind, "currency": "EUR"}]), mode="ignore")
+        db.execute("UPDATE accounts SET rate = ? WHERE id = ?", [rate if kind == "livret" else None, acc_id])
         db.upsert("balance_snapshots", pd.DataFrame([{"account_id": acc_id, "date": d.isoformat(), "balance": bal,
                                                       "source": "manuel"}]), mode="replace")
         invalidate()

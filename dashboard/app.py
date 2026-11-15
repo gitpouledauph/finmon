@@ -7,16 +7,22 @@ st.set_page_config(page_title="finmon", page_icon="📊", layout="wide")
 
 from common import get_db, invalidate  # noqa: E402
 
-pages = [
-    st.Page("views/accueil.py", title="Vue d'ensemble", icon="🏠", default=True),
-    st.Page("views/saisie.py", title="Saisir une opération", icon="➕"),
-    st.Page("views/investissements.py", title="Investissements", icon="📈"),
-    st.Page("views/allocation.py", title="Allocation & exposition", icon="🧭"),
-    st.Page("views/depenses.py", title="Dépenses", icon="💸"),
-    st.Page("views/vacances.py", title="Vacances", icon="🏖️"),
-    st.Page("views/revenus.py", title="Revenus & épargne", icon="💰"),
-    st.Page("views/donnees.py", title="Données & imports", icon="📥"),
-]
+P = {
+    "accueil": st.Page("views/accueil.py", title="Vue d'ensemble", icon="🏠", default=True),
+    "saisie": st.Page("views/saisie.py", title="Saisir une opération", icon="➕"),
+    "investissements": st.Page("views/investissements.py", title="Performance", icon="📈"),
+    "allocation": st.Page("views/allocation.py", title="Allocation & exposition", icon="🧭"),
+    "depenses": st.Page("views/depenses.py", title="Dépenses", icon="💸"),
+    "vacances": st.Page("views/vacances.py", title="Vacances", icon="🏖️"),
+    "revenus": st.Page("views/revenus.py", title="Revenus & épargne", icon="💰"),
+    "donnees": st.Page("views/donnees.py", title="Données & imports", icon="📥"),
+}
+pages = {
+    "": [P["accueil"]],
+    "📈 Investissement": [P["investissements"], P["allocation"], P["saisie"]],
+    "💸 Analyse des dépenses": [P["depenses"], P["revenus"], P["vacances"]],
+    "⚙️ Données": [P["donnees"]],
+}
 
 INTERVALS = {"1 min": 60, "5 min": 300, "15 min": 900}
 

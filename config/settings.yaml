@@ -6,6 +6,14 @@ benchmark:
   ticker: IWDA.AS
   name: MSCI World (iShares IWDA)
 
+# Taux de l'épargne réglementée (% par an, révisés au 1er février et au 1er août).
+# Le LDDS suit le Livret A. Proposés par défaut quand on saisit un livret à la main.
+taux_reglementes:
+  date: "2026-08-01"
+  Livret A: 1.7
+  LDDS: 1.7
+  LEP: 2.5
+
 # Comptes : clé = numéro de compte tel qu'il apparaît dans l'export Boursorama
 # (colonne accountNum) ou identifiant libre. Si un compte n'est pas listé ici,
 # son type est deviné à partir de son libellé (« LIVRET », « LDDS »... => livret).
