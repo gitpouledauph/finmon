@@ -395,8 +395,13 @@ def spread_income(tx: pd.DataFrame, accounts: pd.DataFrame) -> pd.DataFrame:
         hit = df[(df["amount"] > 0) & df["label"].fillna("").str.contains(rx) & (df["source_cat"] != "manuel")]
         for i, r in hit.iterrows():
             df.at[i, "category"], df.at[i, "cat_type"], df.at[i, "source_cat"] = "Virements internes", "transfer", "étalé"
+            # Point de départ : le mois de réception, ou un mois fixe d'une année relative à la réception
+            # (ex. debut_mois: 7, annee: -1 → juillet de l'année précédente).
+            start = r["month"]
+            if p.get("debut_mois"):
+                start = pd.Timestamp(year=r["date"].year + int(p.get("annee", 0)), month=int(p["debut_mois"]), day=1)
             for k in range(n):
-                m = r["month"] + pd.DateOffset(months=k)
+                m = start + pd.DateOffset(months=k)
                 rows.append({"id": f"spread-{r['id']}-{k}", "account_id": r["account_id"], "date": m,
                              "label": f"{p.get('libelle', SPREAD)} ({k + 1}/{n})", "merchant": "ÉTALEMENT",
                              "amount": r["amount"] / n, "category": SPREAD, "source": "etalement",
