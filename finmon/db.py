@@ -114,6 +114,14 @@ CREATE TABLE IF NOT EXISTS vacations (
     note TEXT
 );
 
+CREATE TABLE IF NOT EXISTS manual_contributions (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,       -- compte valorisé à la main (ex. plan d'épargne entreprise)
+    date TEXT NOT NULL,
+    amount REAL NOT NULL,           -- versé (+) ou retiré (−), en EUR
+    label TEXT                      -- intéressement, participation, abondement, versement personnel…
+);
+
 CREATE TABLE IF NOT EXISTS manual_adjustments (
     id TEXT PRIMARY KEY,
     month TEXT NOT NULL,            -- AAAA-MM

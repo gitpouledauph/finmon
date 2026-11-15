@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 import theme
-from common import bundle, empty_state, eur, get_db, pct, period_picker, period_start, plot, show_warnings
+from common import bundle, empty_state, eur, get_db, invalidate, pct, period_picker, period_start, plot, show_warnings
 from finmon import charts
 from finmon.analytics import budget, portfolio
 
@@ -115,12 +115,81 @@ if ev2.selection.rows:
             st.caption(f"Taux {rate[a_id]:.2f} % par an · intérêts estimés sur 12 mois : "
                        f"{eur(row['value'] * rate[a_id] / 100)}".replace(".", ","))
 
+# ------------------------------------------------------------- plan d'épargne entreprise
+pee_accounts = b.accounts[b.accounts["type"] == "epargne_salariale"]
+for acc_row in pee_accounts.itertuples():
+    import uuid as _uuid
+    from datetime import date as _date
+
+    _db = get_db()
+    st.subheader(acc_row.name)
+    contrib = _db.read("SELECT * FROM manual_contributions WHERE account_id = ? ORDER BY date", [acc_row.id])
+    vals = b.balance_snapshots[b.balance_snapshots["account_id"] == acc_row.id].sort_values("date")
+    value = float(vals["balance"].iloc[-1]) if not vals.empty else None
+    invested = float(contrib["amount"].sum()) if not contrib.empty else 0.0
+    gain = value - invested if value is not None and invested > 0 else None
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Valeur actuelle", eur(value) if value is not None else "—",
+              f"au {pd.Timestamp(vals['date'].iloc[-1]):%d/%m/%Y}" if value is not None else "à renseigner", delta_color="off")
+    m2.metric("Total versé", eur(invested), f"{len(contrib)} versement(s)", delta_color="off")
+    m3.metric("Plus-value", eur(gain, sign=True) if gain is not None else "—",
+              pct(gain / invested) if gain is not None else "ajoutez vos versements",
+              delta_color="normal" if gain is not None else "off",
+              help="Valeur actuelle − total versé (versements − retraits).")
+    a1, a2 = st.columns(2)
+    with a1.form(f"pee_contrib_{acc_row.id}", clear_on_submit=True):
+        st.markdown("**Ajouter un versement**")
+        c1_, c2_, c3_ = st.columns(3)
+        dc = c1_.date_input("Date", value=_date.today(), max_value=_date.today(), format="DD/MM/YYYY")
+        ac = c2_.number_input("Montant (€)", step=50.0, format="%.2f",
+                              help="Montant investi (négatif pour un retrait / déblocage).")
+        tc = c3_.selectbox("Origine", ["Intéressement", "Participation", "Abondement", "Versement personnel", "Retrait"])
+        if st.form_submit_button("Ajouter") and ac:
+            amount = -abs(ac) if tc == "Retrait" else ac
+            _db.upsert("manual_contributions", pd.DataFrame([{"id": _uuid.uuid4().hex[:10], "account_id": acc_row.id,
+                                                              "date": dc.isoformat(), "amount": amount, "label": tc}]))
+            invalidate()
+            st.rerun()
+    with a2.form(f"pee_value_{acc_row.id}", clear_on_submit=True):
+        st.markdown("**Mettre à jour la valeur**")
+        v1_, v2_ = st.columns(2)
+        dv = v1_.date_input("Date", value=_date.today(), max_value=_date.today(), format="DD/MM/YYYY")
+        vv = v2_.number_input("Valeur actuelle (€)", min_value=0.0, step=100.0, format="%.2f")
+        if st.form_submit_button("Enregistrer") and vv:
+            _db.upsert("balance_snapshots", pd.DataFrame([{"account_id": acc_row.id, "date": dv.isoformat(),
+                                                           "balance": vv, "source": "manuel"}]), mode="replace")
+            invalidate()
+            st.rerun()
+    if not contrib.empty or len(vals) > 1:
+        with st.expander("Historique : versements et valeurs"):
+            if len(vals) >= 1 and not contrib.empty:
+                days_ = pd.date_range(min(pd.to_datetime(contrib["date"]).min(), pd.to_datetime(vals["date"]).min()),
+                                      pd.Timestamp(_date.today()), freq="D")
+                cum = contrib.assign(d=pd.to_datetime(contrib["date"])).groupby("d")["amount"].sum() \
+                    .reindex(days_).fillna(0.0).cumsum()
+                vs = vals.assign(d=pd.to_datetime(vals["date"])).set_index("d")["balance"]
+                vs = vs[~vs.index.duplicated(keep="last")].reindex(days_).ffill()
+                plot(charts.line(pd.DataFrame({"Valeur": vs, "Total versé": cum}), ["Valeur", "Total versé"],
+                                 height=260, dash={"Total versé": "dot"},
+                                 colors={"Valeur": charts.SERIES[0], "Total versé": charts.MUTED}), key=f"pee_{acc_row.id}")
+            if not contrib.empty:
+                ed_c = st.data_editor(contrib.assign(Supprimer=False)[["Supprimer", "id", "date", "label", "amount"]]
+                                      .rename(columns={"date": "Date", "label": "Origine", "amount": "Montant"}),
+                                      hide_index=True, width="stretch", key=f"pee_ed_{acc_row.id}",
+                                      disabled=["id", "Date", "Origine", "Montant"],
+                                      column_config={"id": None, "Montant": st.column_config.NumberColumn(format="%+,.2f €")})
+                if st.button("Supprimer la sélection", key=f"pee_del_{acc_row.id}"):
+                    for r_ in ed_c[ed_c["Supprimer"]].itertuples(index=False):
+                        _db.execute("DELETE FROM manual_contributions WHERE id = ?", [r_.id])
+                    invalidate()
+                    st.rerun()
+
 # ------------------------------------------------------------- valeurs saisies à la main
-manual_acc = b.accounts[b.accounts["type"].isin(["epargne_salariale", "livret", "autre"])
+manual_acc = b.accounts[b.accounts["type"].isin(["livret", "autre"])
                         & b.accounts["id"].str.startswith("manuel:")]
 if not manual_acc.empty:
     missing = not set(manual_acc["id"]) <= set(b.balance_snapshots["account_id"])
-    with st.expander("Mettre à jour une valeur saisie à la main (épargne salariale, livrets…)", expanded=missing):
+    with st.expander("Mettre à jour une valeur saisie à la main (livrets…)", expanded=missing):
         bs = b.balance_snapshots.sort_values("date").groupby("account_id").tail(1).set_index("account_id")
         from datetime import date as _date
 
