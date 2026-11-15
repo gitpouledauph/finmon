@@ -1,0 +1,30 @@
+# Réglages généraux de finmon.
+base_currency: EUR
+
+# Indice de comparaison pour la performance (ticker Yahoo Finance, coté en EUR).
+benchmark:
+  ticker: IWDA.AS
+  name: MSCI World (iShares IWDA)
+
+# Comptes : clé = numéro de compte tel qu'il apparaît dans l'export Boursorama
+# (colonne accountNum) ou identifiant libre. Si un compte n'est pas listé ici,
+# son type est deviné à partir de son libellé (« LIVRET », « LDDS »... => livret).
+#
+# Exemple :
+# accounts:
+#   "00040123456":
+#     name: Compte courant Bourso
+#     type: courant
+#   "00040987654":
+#     name: Livret A
+#     type: livret
+accounts: {}
+
+# Catégories « fixes » exclues du coût des vacances (elles tombent pendant
+# un voyage mais n'en font pas partie).
+vacation_excluded_categories:
+  - Logement
+  - Abonnements & télécom
+  - Impôts & taxes
+  - Banque & frais
+  - Assurances

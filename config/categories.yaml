@@ -1,0 +1,101 @@
+# Taxonomie des dépenses et règles de classement.
+#
+# Ordre de priorité pour classer une opération :
+#   1. correction manuelle faite dans le dashboard
+#   2. règles « rules » ci-dessous (expression régulière sur le libellé)
+#   3. catégorie fournie par Boursorama (via « bank_mapping »)
+#   4. « À classer »
+#
+# type : expense (dépense), income (revenu), transfer (mouvement interne,
+# épargne, investissement — exclu du budget).
+
+categories:
+  Logement: {type: expense}
+  Alimentation: {type: expense}
+  Restaurants & bars: {type: expense}
+  Transports: {type: expense}
+  Voyages: {type: expense}
+  Shopping: {type: expense}
+  Loisirs & culture: {type: expense}
+  Santé: {type: expense}
+  Abonnements & télécom: {type: expense}
+  Assurances: {type: expense}
+  Impôts & taxes: {type: expense}
+  Banque & frais: {type: expense}
+  Cadeaux & dons: {type: expense}
+  Éducation: {type: expense}
+  Retraits espèces: {type: expense}
+  Autres dépenses: {type: expense}
+  À classer: {type: expense}
+  Salaire: {type: income}
+  Autres revenus: {type: income}
+  Virements internes: {type: transfer}
+  Épargne & investissement: {type: transfer}
+
+# Règles sur le libellé (insensible à la casse). La première qui matche gagne.
+rules:
+  - {pattern: "SALAIRE|PAIE |REMUNERATION", category: Salaire}
+  - {pattern: "TRADE REPUBLIC|BOURSORAMA.*(PEA|BOURSE)|VERS(EMENT)? PEA|ASSURANCE VIE|LINXEA|YOMONI|BINANCE|REVOLUT", category: Épargne & investissement}
+  - {pattern: "VIR(EMENT)? (INTERNE|PERMANENT).*(LIVRET|LDD|LEP|EPARGNE)|LIVRET A|LDDS|VIR.*VERS (MON|LIVRET)", category: Virements internes}
+  - {pattern: "DGFIP|IMPOT|TRESOR PUBLIC|TAXE (FONCIERE|HABITATION)|AMENDE", category: Impôts & taxes}
+  - {pattern: "LOYER|FONCIA|NEXITY|EDF|ENGIE|TOTALENERGIES ELEC|EAU DE|SYNDIC", category: Logement}
+  - {pattern: "AXA|MAIF|MACIF|MATMUT|ALLIANZ|GENERALI|ASSURANCE|ALAN|MUTUELLE", category: Assurances}
+  - {pattern: "UBER ?EATS|DELIVEROO|JUST ?EAT|RESTAU|BRASSERIE|BISTRO|CAFE|BAR |PIZZ|SUSHI|BURGER|MCDO|STARBUCKS|KFC", category: Restaurants & bars}
+  - {pattern: "AIR ?FRANCE|EASYJET|RYANAIR|TRANSAVIA|VUELING|LUFTHANSA|BOOKING|AIRBNB|HOTEL|EXPEDIA|ACCOR|HOSTEL", category: Voyages}
+  - {pattern: "SNCF|OUIGO|TRAINLINE|UBER|BOLT|HEETCH|RATP|NAVIGO|IDF MOBILITES|VELIB|LIME|TOTAL(ENERGIES)?|ESSO|SHELL|BP |PEAGE|VINCI AUTO|SANEF|PARKING|INDIGO", category: Transports}
+  - {pattern: "CARREFOUR|MONOPRIX|FRANPRIX|LIDL|AUCHAN|LECLERC|PICARD|INTERMARCHE|CASINO|NATURALIA|BIOCOOP|G20|SUPER U|U EXPRESS|GRAND FRAIS|BOULANG|PRIMEUR", category: Alimentation}
+  - {pattern: "NETFLIX|SPOTIFY|DEEZER|DISNEY|CANAL|APPLE\\.COM|GOOGLE|AMAZON PRIME|FREE MOBILE|FREE TELECOM|ORANGE|SFR|BOUYGUES|SOSH|RED BY|CHATGPT|OPENAI|ANTHROPIC|ICLOUD", category: Abonnements & télécom}
+  - {pattern: "PHARMA|DOCTOLIB|MEDECIN|DENTISTE|OPTIC|LABO|HOPITAL|KINE|CPAM", category: Santé}
+  - {pattern: "FNAC|DARTY|AMAZON|ZARA|H&M|UNIQLO|DECATHLON|IKEA|LEROY MERLIN|SEPHORA|ZALANDO|VINTED|CELIO|APPLE STORE", category: Shopping}
+  - {pattern: "CINEMA|UGC|PATHE|MK2|THEATRE|CONCERT|FNAC SPECTACLE|TICKETMASTER|MUSEE|SALLE DE SPORT|BASIC FIT|FITNESS|STEAM|PLAYSTATION", category: Loisirs & culture}
+  - {pattern: "RETRAIT DAB|RET DAB|RETRAIT ", category: Retraits espèces}
+  - {pattern: "COTISATION|FRAIS |COMMISSION|AGIOS|INTERETS DEBITEURS", category: Banque & frais}
+  - {pattern: "DON |CROIX ROUGE|UNICEF|MSF|LEETCHI|CAGNOTTE", category: Cadeaux & dons}
+  - {pattern: "REMBOURSEMENT|REMB |CAF |POLE EMPLOI|FRANCE TRAVAIL|INTERETS CREDITEURS|INTERETS ", category: Autres revenus}
+
+# Correspondance catégories Boursorama -> taxonomie finmon.
+# Comparaison par mot-clé, en minuscules, sur « catégorie parente / catégorie ».
+bank_mapping:
+  restaurant: Restaurants & bars
+  bar: Restaurants & bars
+  alimentation: Alimentation
+  supermarche: Alimentation
+  courses: Alimentation
+  logement: Logement
+  loyer: Logement
+  energie: Logement
+  transport: Transports
+  vehicule: Transports
+  carburant: Transports
+  voyage: Voyages
+  vacances: Voyages
+  hotel: Voyages
+  sante: Santé
+  shopping: Shopping
+  achats: Shopping
+  habillement: Shopping
+  loisirs: Loisirs & culture
+  sorties: Loisirs & culture
+  sport: Loisirs & culture
+  culture: Loisirs & culture
+  abonnement: Abonnements & télécom
+  telephon: Abonnements & télécom
+  internet: Abonnements & télécom
+  assurance: Assurances
+  impot: Impôts & taxes
+  taxe: Impôts & taxes
+  banque: Banque & frais
+  frais bancaires: Banque & frais
+  cadeau: Cadeaux & dons
+  don: Cadeaux & dons
+  education: Éducation
+  enfant: Éducation
+  retrait: Retraits espèces
+  especes: Retraits espèces
+  salaire: Salaire
+  revenu: Autres revenus
+  remboursement: Autres revenus
+  mouvements internes: Virements internes
+  virement interne: Virements internes
+  epargne: Épargne & investissement
+  placement: Épargne & investissement

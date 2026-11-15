@@ -1,6 +1,11 @@
 #Folders
 
 sandbox/
+monitoring_env/
+
+
+#notebooks
+test_trade.ipynb
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -177,3 +182,9 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# finmon : données personnelles et environnement local — ne jamais committer
+data/
+.venv-finmon/
+*.db
+*.sqlite

@@ -1,0 +1,25 @@
+# Métadonnées des titres, par ISIN. Tout est optionnel : finmon essaie de
+# trouver le ticker Yahoo Finance tout seul et applique des profils types
+# (MSCI World, S&P 500...) d'après le nom. Ce fichier sert à corriger ou
+# préciser quand c'est faux.
+#
+# Champs :
+#   ticker      : ticker Yahoo Finance utilisé pour les cours (idéalement coté en EUR)
+#   asset_class : Actions | Obligations | Monétaire | Crypto | Matières premières | Immobilier
+#   exposure    : exposition devise du SOUS-JACENT (pas la devise de cotation !),
+#                 utilisée pour séparer l'effet change de la performance du titre.
+#   regions     : répartition géographique
+#   sectors     : répartition sectorielle
+#
+# Exemple :
+# IE00B4L5Y983:
+#   ticker: IWDA.AS
+#   asset_class: Actions
+#   exposure: {USD: 0.72, EUR: 0.09, JPY: 0.05, GBP: 0.04, CHF: 0.03, AUTRE: 0.07}
+#   regions: {Amérique du Nord: 0.74, Europe: 0.16, Japon: 0.05, Asie-Pacifique: 0.05}
+#
+# Un nom Boursorama sans ISIN peut être rattaché à un ISIN via « aliases » :
+# aliases:
+#   "AMUNDI MSCI WORLD": LU1681043599
+
+aliases: {}
