@@ -21,7 +21,7 @@ st.caption("Projection de chaque ligne au rendement annuel moyen de son cours en
            "performances futures.")
 
 ETF_RE = re.compile(r"\bETF\b|UCITS|AMUNDI|ISHARES|VANECK|LYXOR|XTRACKERS|SPDR|VANGUARD|INVESCO|WISDOMTREE|"
-                    r"\bPEA\b.*(NASDAQ|S&P|MSCI|STOXX)|PROFILE", re.I)
+                    r"\bPEA\b.*(?:NASDAQ|S&P|MSCI|STOXX)|PROFILE", re.I)
 names = b.accounts.set_index("id")["name"].to_dict()
 lines = (cur.assign(acc=cur["account_id"].map(names))
          .groupby("ticker", dropna=True)

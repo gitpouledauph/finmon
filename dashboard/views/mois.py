@@ -58,11 +58,12 @@ k[3].metric("Épargne livrets (nette)", eur(f["livrets"], sign=True),
 # ------------------------------------------------------------- où va l'argent
 st.subheader("Où est passé l'argent")
 rest = f["income"] - f["expenses"] - f["invest"] - f["livrets"]
-steps = [("Dépenses", -f["expenses"]), ("Investissements", -f["invest"]), ("Livrets", -f["livrets"])]
-fig = charts.waterfall(steps, "Revenus", f["income"], "Reste sur le compte")
-plot(fig, key="wf")
-st.caption(f"Reste sur le compte courant ce mois : {eur(rest, sign=True)} "
-           "(une valeur négative signifie que le mois a puisé dans le solde ou les livrets).")
+labels = ["Revenus", "Dépenses", "Investissements (courtiers)",
+          "Livrets (versé − retiré)", "Variation du compte courant"]
+values = [f["income"], -f["expenses"], -f["invest"], -f["livrets"], rest]
+plot(charts.signed_hbar(labels[::-1], values[::-1]), key="wf")
+st.caption("Revenus − dépenses − investissements − épargne livrets = variation du compte courant. "
+           "Un montant positif sur les livrets signifie que de l'argent en est revenu ce mois-ci.")
 
 # ------------------------------------------------------------- par catégorie
 st.subheader("Dépenses par catégorie")
