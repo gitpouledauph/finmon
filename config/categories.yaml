@@ -10,7 +10,8 @@
 # épargne, investissement — exclu du budget).
 
 categories:
-  Logement: {type: expense}
+  Loyer: {type: expense}          # loyer (ou sa part fixe en colocation)
+  Logement: {type: expense}       # autres charges du logement : énergie, eau, assurance habitation…
   Alimentation: {type: expense}
   Restaurants & bars: {type: expense}
   Transports: {type: expense}

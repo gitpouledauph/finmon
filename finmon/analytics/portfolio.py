@@ -40,6 +40,7 @@ class PortfolioResult:
     realized: pd.DataFrame           # par position : realized, r_local, r_fx, r_cross
     income: pd.DataFrame             # dividendes / intérêts / frais / impôts par date
     warnings: list[str] = field(default_factory=list)
+    closed: pd.DataFrame = field(default_factory=pd.DataFrame)  # une ligne par vente / sortie : d'où vient le réalisé
 
     @property
     def empty(self) -> bool:
@@ -112,7 +113,7 @@ def build(trades: pd.DataFrame, snapshots: pd.DataFrame, instruments: pd.DataFra
     fxm = fx_matrix(fx, days)
     inst = instruments.set_index("isin") if not instruments.empty else pd.DataFrame()
 
-    pos_frames, realized_rows, current_rows = [], [], []
+    pos_frames, realized_rows, current_rows, closed_rows = [], [], [], []
     keys = pd.concat([tr.loc[tr["isin"].notna() & (tr["isin"] != ""), ["account_id", "isin"]],
                       sn[["account_id", "isin"]]]).drop_duplicates()
 
@@ -138,6 +139,8 @@ def build(trades: pd.DataFrame, snapshots: pd.DataFrame, instruments: pd.DataFra
         qty_series = _apply(events, F, px, days, snap, warnings, name)
         q, C, L, realized = qty_series
         adj_flow = realized.pop("adj_flow")
+        for c in realized.pop("closed"):
+            closed_rows.append({"account_id": account_id, "isin": isin, "name": name, **c})
         V = q * px
         Fd = F.reindex(days)
         with np.errstate(divide="ignore", invalid="ignore"):
@@ -187,7 +190,7 @@ def build(trades: pd.DataFrame, snapshots: pd.DataFrame, instruments: pd.DataFra
         current = last.sort_values("value", ascending=False).reset_index(drop=True)
     else:
         current = pd.DataFrame()
-    return PortfolioResult(days, positions, accounts, current, realized, income, warnings)
+    return PortfolioResult(days, positions, accounts, current, realized, income, warnings, pd.DataFrame(closed_rows))
 
 
 def _calibrate(px: pd.Series, ev: pd.DataFrame, snap: pd.DataFrame, name: str, warnings: list) -> pd.Series:
@@ -238,6 +241,7 @@ def _apply(events, F: pd.Series, px: pd.Series, days: pd.DatetimeIndex, snap: pd
     q_a, C_a, L_a, adj = np.zeros(n), np.zeros(n), np.zeros(n), np.zeros(n)
     q = C = L = 0.0
     real = {"realized": 0.0, "r_local": 0.0, "r_fx": 0.0, "r_cross": 0.0}
+    closed: list[dict] = []
     Fv = F.reindex(days).values
     pxv = px.values
     reconciled = False
@@ -259,17 +263,23 @@ def _apply(events, F: pd.Series, px: pd.Series, days: pd.DatetimeIndex, snap: pd
                         proceeds *= q / qty
                         oversold.append(d)
                     real["realized"] += proceeds - Cr
+                    rl = rf = 0.0
                     if Lr > 0:
                         rl = (proceeds / f) / Lr - 1
                         rf = f / (Cr / Lr) - 1
                         real["r_local"] += Cr * rl
                         real["r_fx"] += Cr * rf
                         real["r_cross"] += (proceeds - Cr) - Cr * rl - Cr * rf
+                    closed.append({"date": d, "type": "Vente", "quantity": min(qty, q), "proceeds": proceeds,
+                                   "cost": Cr, "pru": Cr / min(qty, q) if qty else None, "realized": proceeds - Cr,
+                                   "r_local": Cr * rl, "r_fx": Cr * rf, "fee_only": proceeds == 0})
                 if frac >= 1:
                     q, C, L = 0.0, 0.0, 0.0
                 else:
                     q, C, L = q - qty, C - Cr, L - Lr
             if kind == "gone" and q > 1e-12:
+                closed.append({"date": d, "type": "Sortie (absent du relevé)", "quantity": q, "proceeds": 0.0,
+                               "cost": C, "pru": C / q, "realized": -C, "r_local": -C, "r_fx": 0.0, "fee_only": False})
                 real["realized"] -= C
                 real["r_local"] -= C
                 gone.append(d)
@@ -307,6 +317,7 @@ def _apply(events, F: pd.Series, px: pd.Series, days: pd.DatetimeIndex, snap: pd
         warnings.append(f"« {name} » : vente le {oversold[0]:%d/%m/%Y} supérieure à la quantité connue — il manque des "
                         f"achats/dépôts antérieurs ; seule la part connue est comptée dans la plus-value réalisée.")
     real["adj_flow"] = adj
+    real["closed"] = closed
     return q_a, C_a, L_a, real
 
 

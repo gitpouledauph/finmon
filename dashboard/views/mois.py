@@ -32,38 +32,35 @@ n_prev = max(prev12["month"].nunique(), 1)
 ly = tx[tx["month"] == m - pd.DateOffset(years=1)]
 
 
-def flows(d: pd.DataFrame) -> dict:
-    return {
-        "income": d.loc[d["cat_type"] == "income", "amount"].sum(),
-        "expenses": budget.expenses(d)["spend"].sum(),
-        "invest": -d.loc[d["category"] == "Épargne & investissement", "amount"].sum(),
-        "livrets": -d.loc[d["category"] == "Épargne livrets", "amount"].sum(),
-    }
-
-
-f, fa = flows(cur), {k: v / n_prev for k, v in flows(prev12).items()}
+refunds = st.toggle("Déduire les remboursements reçus (amis, avoirs)", value=False,
+                    help="Désactivé : seules les sorties d'argent comptent en dépenses, et seul le salaire compte en "
+                         "revenu. Activé : les remboursements d'amis et avoirs marchands réduisent les dépenses.")
+g = budget.global_monthly(tx, deduct_refunds=refunds)
+f = g.loc[m] if m in g.index else pd.Series(0.0, index=g.columns)
+g12 = g[(g.index < m) & (g.index >= m - pd.DateOffset(months=12))]
+fa = g12.mean() if not g12.empty else pd.Series(0.0, index=g.columns)
 
 # ------------------------------------------------------------- KPIs
 k = st.columns(4)
-k[0].metric("Revenus", eur(f["income"]), f"{eur(f['income'] - fa['income'], sign=True)} vs moy. 12 mois")
-k[1].metric("Dépenses", eur(f["expenses"]), f"{eur(f['expenses'] - fa['expenses'], sign=True)} vs moy. 12 mois",
-            delta_color="inverse", help="Dépenses nettes : remboursements des colocataires et des amis déduits.")
-k[2].metric("Investi (courtiers)", eur(f["invest"]),
-            f"{f['invest'] / f['income'] * 100:.0f} % des revenus" if f["income"] > 0 else None, delta_color="off",
-            help="Virements vers IBKR, Trade Republic, Binance… rapprochés des versements reçus par le courtier.")
-k[3].metric("Épargne livrets (nette)", eur(f["livrets"], sign=True),
-            "vers les livrets" if f["livrets"] >= 0 else "retiré des livrets", delta_color="off",
-            help="Virements vers les livrets moins retours des livrets dans le mois.")
+k[0].metric("Salaire", eur(f["salaire"]), f"{eur(f['salaire'] - fa['salaire'], sign=True)} vs moy. 12 mois",
+            help="Seul le salaire compte comme revenu (aides, remboursements d'impôt, primes… sont ignorés).")
+k[1].metric("Loyer", eur(f["loyer"]), help="Votre part fixe (colocation).")
+k[2].metric("Dépenses hors loyer", eur(f["depenses"]),
+            f"{eur(f['depenses'] - fa['depenses'], sign=True)} vs moy. 12 mois", delta_color="inverse")
+k[3].metric("Économisé ce mois", eur(f["economise"], sign=True),
+            f"{f['taux'] * 100:.0f} % du salaire" if f["taux"] == f["taux"] else None, delta_color="off",
+            help="Salaire − loyer − dépenses hors loyer.")
 
 # ------------------------------------------------------------- où va l'argent
-st.subheader("Où est passé l'argent")
-rest = f["income"] - f["expenses"] - f["invest"] - f["livrets"]
-labels = ["Revenus", "Dépenses", "Investissements (courtiers)",
-          "Livrets (versé − retiré)", "Variation du compte courant"]
-values = [f["income"], -f["expenses"], -f["invest"], -f["livrets"], rest]
-plot(charts.signed_hbar(labels[::-1], values[::-1]), key="wf")
-st.caption("Revenus − dépenses − investissements − épargne livrets = variation du compte courant. "
-           "Un montant positif sur les livrets signifie que de l'argent en est revenu ce mois-ci.")
+st.subheader("Ce qui a été mis de côté")
+j = st.columns(3)
+j[0].metric("Investi (courtiers)", eur(f["investi"], sign=True),
+            help="Virements vers IBKR, Trade Republic, Binance… rapprochés des versements reçus par le courtier.")
+j[1].metric("Livrets (net)", eur(f["livrets"], sign=True),
+            "versé" if f["livrets"] >= 0 else "retiré des livrets", delta_color="off",
+            help="Versements vers les livrets moins retraits des livrets dans le mois : les allers-retours s'annulent.")
+j[2].metric("Reste sur le compte courant", eur(f["economise"] - f["investi"] - f["livrets"], sign=True),
+            help="Économisé − investi − livrets. Négatif : le mois a puisé dans le solde du compte.")
 
 # ------------------------------------------------------------- par catégorie
 st.subheader("Dépenses par catégorie")
@@ -88,7 +85,7 @@ with right:
 
 # ------------------------------------------------------------- logement
 coloc = cur[cur["category"] == "Loyer & colocation (hors budget)"]
-mine = -cur.loc[cur["category"] == "Logement", "amount"].sum()
+mine = -cur.loc[cur["category"] == "Loyer", "amount"].sum()
 if not coloc.empty or mine:
     st.subheader("Logement")
     paid = -coloc.loc[coloc["amount"] < 0, "amount"].sum()
@@ -105,7 +102,7 @@ if not coloc.empty or mine:
                    "(ou ont payé en avance le mois précédent).")
     hist_c = tx[tx["category"] == "Loyer & colocation (hors budget)"]
     since = hist_c[hist_c["month"] <= m]
-    cum = -since["amount"].sum() - (-tx.loc[(tx["category"] == "Logement") & (tx["month"] <= m)
+    cum = -since["amount"].sum() - (-tx.loc[(tx["category"] == "Loyer") & (tx["month"] <= m)
                                              & (tx["source_cat"] == "loyer fixe"), "amount"].sum())
     st.caption(f"Cumul depuis le début : {eur(cum, sign=True)} "
                "(positif = avancé pour les colocataires). Les virements passés à partir du 25 comptent pour le mois suivant.")

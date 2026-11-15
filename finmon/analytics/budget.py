@@ -98,7 +98,8 @@ def classify(tx: pd.DataFrame, overrides: pd.DataFrame | None = None,
     # Loyers payés/reçus en fin de mois pour le mois suivant : rattachés au mois couvert.
     cutoff = int(config.settings().get("logement_mois_suivant_apres", 25) or 0)
     if cutoff:
-        late = df["category"].str.contains("Logement|Loyer", na=False) & (df["date"].dt.day >= cutoff)
+        late = df["category"].str.contains("Logement|Loyer", na=False) & (df["date"].dt.day >= cutoff) \
+            & (df["amount"].abs() >= 300)   # loyers, pas les petites charges
         df.loc[late, "month"] = df.loc[late, "month"] + pd.DateOffset(months=1)
     df["year"] = df["date"].dt.year
     return df
@@ -255,8 +256,43 @@ def add_fixed_rent(tx: pd.DataFrame, accounts: pd.DataFrame, until=None) -> pd.D
         rows.append({"id": f"loyer-fixe-{m:%Y-%m}", "account_id": acc, "date": m, "value_date": m,
                      "label": "Loyer — ma part (colocation)", "merchant": "LOYER (MA PART)", "amount": -amount,
                      "bank_category": None, "bank_category_parent": None, "foreign_currency": None,
-                     "source": "loyer_fixe", "category": "Logement", "source_cat": "loyer fixe",
+                     "source": "loyer_fixe", "category": "Loyer", "source_cat": "loyer fixe",
                      "vacation_tag": None, "cat_type": "expense", "month": m, "year": m.year,
                      "linked_account": None})
     extra = pd.DataFrame(rows)
     return pd.concat([tx, extra[[c for c in extra.columns if c in tx.columns]]], ignore_index=True)
+
+
+# --------------------------------------------------------------------------
+# Vue globale : salaire, loyer, dépenses, économisé
+# --------------------------------------------------------------------------
+INCOME_MAIN = "Salaire"
+RENT = "Loyer"
+
+
+def global_monthly(df: pd.DataFrame, deduct_refunds: bool = False) -> pd.DataFrame:
+    """Par mois : salaire, loyer, autres dépenses, économisé, taux, et où l'épargne est allée.
+
+    - revenus = salaire uniquement (aides, remboursements d'impôt, primes… sont ignorés) ;
+    - dépenses = sorties d'argent des catégories de dépense, hors loyer. Par défaut les entrées
+      d'argent (remboursements d'amis, avoirs) ne sont PAS déduites ; `deduct_refunds` les déduit ;
+    - économisé = salaire − loyer − dépenses ;
+    - investi = virements nets vers les courtiers ; livrets = versements − retraits des livrets (net).
+    """
+    cols = ["salaire", "loyer", "depenses", "economise", "taux", "investi", "livrets"]
+    if df.empty:
+        return pd.DataFrame(columns=cols, index=pd.DatetimeIndex([], name="month"), dtype=float)
+    sal = df[df["category"] == INCOME_MAIN].groupby("month")["amount"].sum()
+    rent = -df[df["category"] == RENT].groupby("month")["amount"].sum()
+    exp = df[(df["cat_type"] == "expense") & (df["category"] != RENT)]
+    if not deduct_refunds:
+        exp = exp[exp["amount"] < 0]
+    spend = -exp.groupby("month")["amount"].sum()
+    inv = -df[df["category"] == "Épargne & investissement"].groupby("month")["amount"].sum()
+    liv = -df[df["category"] == "Épargne livrets"].groupby("month")["amount"].sum()
+    out = pd.DataFrame({"salaire": sal, "loyer": rent, "depenses": spend, "investi": inv, "livrets": liv}).fillna(0.0)
+    out = out.sort_index()
+    out["economise"] = out["salaire"] - out["loyer"] - out["depenses"]
+    out["taux"] = np.where(out["salaire"] > 0, out["economise"] / out["salaire"], np.nan)
+    out.index.name = "month"
+    return out[cols]

@@ -16,6 +16,7 @@ P = {
     "saisie": st.Page("views/saisie.py", title="Saisir une opération", icon=":material/edit_note:"),
     "investissements": st.Page("views/investissements.py", title="Performance", icon=":material/show_chart:"),
     "allocation": st.Page("views/allocation.py", title="Allocation & exposition", icon=":material/donut_large:"),
+    "globale": st.Page("views/globale.py", title="Vue globale", icon=":material/account_balance_wallet:"),
     "mois": st.Page("views/mois.py", title="Bilan du mois", icon=":material/calendar_month:"),
     "depenses": st.Page("views/depenses.py", title="Dépenses", icon=":material/receipt_long:"),
     "vacances": st.Page("views/vacances.py", title="Vacances", icon=":material/flight:"),
@@ -25,7 +26,7 @@ P = {
 pages = {
     "Synthèse": [P["accueil"]],
     "Investissement": [P["investissements"], P["allocation"], P["simulation"], P["saisie"]],
-    "Analyse des dépenses": [P["mois"], P["depenses"], P["revenus"], P["vacances"]],
+    "Analyse des dépenses": [P["globale"], P["mois"], P["depenses"], P["revenus"], P["vacances"]],
     "Données": [P["donnees"]],
 }
 

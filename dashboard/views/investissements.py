@@ -63,6 +63,26 @@ with right:
                      colors={"Mon portefeuille": charts.SERIES[0], bench_name: charts.MUTED},
                      dash={bench_name: "dot"}), key="perf")
 
+# ------------------------------------------------------------- gain vs capital investi
+st.subheader("Gain ou perte par rapport au capital investi")
+gain = pd.DataFrame({"Valeur − capital investi": view["total"] - view["invested"]})
+lat = pf.positions[pf.positions["account_id"].isin(sel)].groupby("date")["latent"].sum()
+gain["Plus-value latente (lignes détenues)"] = lat.reindex(gain.index).fillna(0.0)
+fig = go.Figure()
+g0 = gain["Valeur − capital investi"]
+fig.add_trace(go.Scatter(x=g0.index, y=g0.clip(lower=0), fill="tozeroy", mode="none",
+                         fillcolor="rgba(60,207,122,0.18)", showlegend=False, hoverinfo="skip"))
+fig.add_trace(go.Scatter(x=g0.index, y=g0.clip(upper=0), fill="tozeroy", mode="none",
+                         fillcolor="rgba(240,98,93,0.18)", showlegend=False, hoverinfo="skip"))
+fig.add_trace(go.Scatter(x=g0.index, y=g0, name="Valeur − capital investi", line=dict(color=charts.SERIES[0], width=2),
+                         hovertemplate="%{y:+,.0f} €<extra>Valeur − capital investi</extra>"))
+fig.add_trace(go.Scatter(x=gain.index, y=gain["Plus-value latente (lignes détenues)"],
+                         name="Plus-value latente (lignes détenues)", line=dict(color=charts.MUTED, width=1.5, dash="dot"),
+                         hovertemplate="%{y:+,.0f} €<extra>Latente</extra>"))
+plot(charts.layout(fig, 320), key="gain")
+st.caption("Courbe pleine : valeur du portefeuille moins l'argent net versé, jour par jour (tout compris : latent, "
+           "réalisé, dividendes, frais). Pointillés : plus-value latente des seules lignes encore détenues.")
+
 # ------------------------------------------------------------- effet change
 st.subheader("D'où vient la performance : sous-jacent ou change ?")
 st.caption(
@@ -119,16 +139,52 @@ if not cur.empty:
     })
     download_df(t.set_index("Titre"), "positions")
 
-with st.expander("Plus-values réalisées, dividendes, intérêts et frais"):
-    rz = pf.realized[pf.realized["account_id"].isin(sel)]
-    rz = rz[rz["realized"].abs() > 0.005]
-    if not rz.empty:
-        st.dataframe(rz.rename(columns={"name": "Titre", "realized": "Réalisé", "r_local": "dont sous-jacent",
-                                        "r_fx": "dont change", "r_cross": "croisé"}).drop(columns=["account_id"]),
-                     hide_index=True, width="stretch")
+# ------------------------------------------------------------- réalisé : d'où il vient
+st.subheader("Plus-values réalisées : d'où elles viennent")
+cl = pf.closed[pf.closed["account_id"].isin(sel)] if not pf.closed.empty else pf.closed
+if cl.empty:
+    st.caption("Aucune vente sur les comptes sélectionnés.")
+else:
+    fees_only = cl[cl["fee_only"]]
+    trades_ = cl[~cl["fee_only"]].copy()
+    by_line = (trades_.groupby(["name", "account_id"])
+               .agg(Ventes=("date", "size"), Produit=("proceeds", "sum"), Coût=("cost", "sum"),
+                    Réalisé=("realized", "sum")).reset_index().sort_values("Réalisé"))
+    by_line["Compte"] = by_line["account_id"].map(names)
+    st.caption("Cliquez sur une ligne pour voir chaque vente : quantité, prix de revient (PMP), produit et plus-value. "
+               f"Total : {eur(cl['realized'].sum(), sign=True)}"
+               + (f", dont {eur(fees_only['realized'].sum(), sign=True)} de frais prélevés en crypto." if len(fees_only) else "."))
+    l, r = st.columns([2, 3])
+    with l:
+        ev = st.dataframe(by_line[["name", "Compte", "Ventes", "Réalisé"]].rename(columns={"name": "Titre"}),
+                          hide_index=True, width="stretch", on_select="rerun", selection_mode="single-row",
+                          key="rz_sel", column_config={"Réalisé": st.column_config.NumberColumn(format="%+,.2f €")})
+    with r:
+        if ev.selection.rows:
+            row = by_line.iloc[ev.selection.rows[0]]
+            det = trades_[(trades_["name"] == row["name"]) & (trades_["account_id"] == row["account_id"])]
+        else:
+            det = trades_
+        det = det.sort_values("date", ascending=False)
+        st.dataframe(pd.DataFrame({
+            "Date": det["date"], "Titre": det["name"], "Type": det["type"], "Quantité": det["quantity"],
+            "PRU": det["pru"], "Produit": det["proceeds"], "Prix de revient": det["cost"],
+            "Plus-value": det["realized"], "dont change": det["r_fx"]}),
+            hide_index=True, width="stretch", column_config={
+                "Date": st.column_config.DateColumn(format="DD/MM/YYYY"),
+                "Quantité": st.column_config.NumberColumn(format="%.6g"),
+                "PRU": st.column_config.NumberColumn(format="%,.2f €"),
+                "Produit": st.column_config.NumberColumn(format="%,.2f €"),
+                "Prix de revient": st.column_config.NumberColumn(format="%,.2f €"),
+                "Plus-value": st.column_config.NumberColumn(format="%+,.2f €"),
+                "dont change": st.column_config.NumberColumn(format="%+,.2f €")})
+
+with st.expander("Dividendes, intérêts et frais par année"):
     inc = pf.income[pf.income["account_id"].isin(sel)].copy()
     if not inc.empty:
         inc["Année"] = inc["date"].dt.year
         piv = inc.pivot_table(index="Année", columns="kind", values="amount", aggfunc="sum", fill_value=0)
         piv = piv.rename(columns={"dividend": "Dividendes", "interest": "Intérêts", "fee": "Frais", "tax": "Impôts"})
         st.dataframe(piv.style.format("{:,.2f} €"), width="stretch")
+    else:
+        st.caption("Aucun.")

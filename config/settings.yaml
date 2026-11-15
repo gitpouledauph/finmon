@@ -35,6 +35,7 @@ logement_mois_suivant_apres: 25
 # Catégories « fixes » exclues du coût des vacances (elles tombent pendant
 # un voyage mais n'en font pas partie).
 vacation_excluded_categories:
+  - Loyer
   - Logement
   - Abonnements & télécom
   - Impôts & taxes
