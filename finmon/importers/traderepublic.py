@@ -9,9 +9,6 @@
 """
 from __future__ import annotations
 
-import shutil
-import subprocess
-import sys
 from datetime import date
 from pathlib import Path
 
@@ -144,42 +141,59 @@ def import_portfolio(db: DB, df: pd.DataFrame, source: str = "", snapshot_date: 
 
 
 # --------------------------------------------------------------------------
-# Synchronisation via pytr
+# Export historique unique via pytr (une seule connexion)
 # --------------------------------------------------------------------------
-def pytr_bin() -> str | None:
-    cand = Path(sys.executable).parent / "pytr"
-    return str(cand) if cand.exists() else shutil.which("pytr")
+def export_history(db: DB, outdir: Path) -> list[str]:
+    """Se connecte UNE fois à Trade Republic (connexion « v2 » : validation dans l'app),
+    exporte l'historique des transactions et la photo du portefeuille, puis importe.
 
-
-def credentials_stored() -> bool:
-    return (Path.home() / ".pytr" / "credentials").exists()
-
-
-def sync(db: DB, outdir: Path, interactive: bool = True) -> list[str]:
-    """Exporte transactions + portefeuille avec pytr, puis importe.
-
-    Avec interactive=False (bouton du dashboard), pytr doit avoir des
-    identifiants enregistrés (``pytr login --store_credentials``).
+    Rien n'est enregistré dans ~/.pytr (ni PIN, ni cookies) : aucun lien ne subsiste.
     """
-    exe = pytr_bin()
-    if not exe:
-        raise RuntimeError("pytr n'est pas installé : pip install pytr")
+    import asyncio
+
+    try:
+        from pytr.account import login
+        from pytr.event import Event
+        from pytr.portfolio import Portfolio
+        from pytr.timeline import Timeline
+        from pytr.transactions import TransactionExporter
+    except ImportError as e:  # pragma: no cover
+        raise RuntimeError("pytr n'est pas installé : pip install pytr") from e
+
     outdir.mkdir(parents=True, exist_ok=True)
-    stdin = None if interactive else subprocess.DEVNULL
-    logs = []
     tx = outdir / "account_transactions.csv"
     pf = outdir / "portfolio.csv"
-    for args in (
-        [exe, "export_transactions", "--lang", "en", "--no-decimal-localization", "--outputdir", str(outdir), str(tx)],
-        [exe, "portfolio", "-o", str(pf)],
-    ):
-        r = subprocess.run(args, stdin=stdin, capture_output=not interactive, text=True, timeout=600)
-        if r.returncode != 0:
-            msg = (r.stderr or r.stdout or "") if not interactive else ""
-            raise RuntimeError(f"pytr a échoué ({' '.join(args[1:2])}) : {msg[-800:]}")
-        logs.append(f"pytr {args[1]} OK")
+    logs = []
+
+    print("Connexion à Trade Republic : saisissez votre numéro (+33…) et votre PIN, "
+          "puis CONFIRMEZ la connexion dans l'app Trade Republic sur votre téléphone.")
+    tr = login(store_credentials=False, waf_token="default", v2=True)
+
+    print("Téléchargement de l'historique (peut prendre quelques minutes)…")
+    tl = Timeline(tr, outdir, store_event_database=False)
+    portfolio = Portfolio(tr, output=pf, lang="en", decimal_localization=False)
+
+    async def run_all():
+        await tl.tl_loop()
+        try:  # même connexion, même boucle : pas de seconde validation
+            await asyncio.wait_for(portfolio.portfolio_loop(), timeout=180)
+            return None
+        except Exception as e:  # la photo du portefeuille est un plus, pas indispensable
+            return e
+
+    pf_error = asyncio.run(run_all())
+    with open(tx, "w", encoding="utf-8") as f:
+        TransactionExporter(lang="en", date_with_time=True, decimal_localization=False).export(
+            f, [Event.from_dict(item) for item in tl.events], sort=True, format="csv")
+    logs.append(f"Historique exporté : {len(tl.events)} événements")
+    if pf_error is None:
+        portfolio.write_csv()
+        logs.append("Portefeuille exporté")
+    else:
+        logs.append(f"Photo du portefeuille non récupérée ({type(pf_error).__name__}) — l'historique suffit.")
+
     for f in (tx, pf):
-        if f.exists():
+        if f.exists() and f.stat().st_size > 0:
             kind, n = import_file(db, f)
-            logs.append(f"{f.name} : {n} lignes ({kind})")
+            logs.append(f"{f.name} : {n} lignes importées ({kind})")
     return logs

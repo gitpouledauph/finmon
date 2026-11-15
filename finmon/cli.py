@@ -41,8 +41,11 @@ def main(argv: list[str] | None = None) -> None:
     elif args.command == "export-tr":
         from .importers import traderepublic
 
-        logs = traderepublic.sync(db, profile.archive / "traderepublic" / "historique", interactive=True)
-        logs.append("Historique Trade Republic importé. Vous pouvez supprimer ~/.pytr si vous ne voulez plus de lien.")
+        logs = traderepublic.export_history(db, profile.archive / "traderepublic" / "historique")
+        from .sync import refresh_prices
+
+        logs += refresh_prices(db)
+        logs.append("✅ Historique Trade Republic importé. Aucune session n'est conservée sur ce Mac.")
     elif args.command == "prices":
         from .sync import refresh_prices
 
