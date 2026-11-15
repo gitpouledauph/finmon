@@ -9,17 +9,22 @@ Ré-importer un fichier qui recoupe un précédent ne crée pas de doublons.
 
 ---
 
-#### 🟡 Binance — relevé de toutes les transactions
+#### 🟡 Binance
 
-1. Sur **binance.com** (navigateur d'ordinateur) : **Portefeuille › Vue d'ensemble › Historique des transactions**.
-2. En haut à droite : **Exporter › Exporter l'historique des transactions** (ou « Générer tous les relevés »).
-3. Compte : **Tous** · Crypto : **Toutes** · Période : depuis l'ouverture du compte. Si la période est limitée
-   (souvent 12 mois par export), faites un export par année.
-4. Téléchargez le fichier quand Binance l'a préparé (quelques minutes, lien dans « Historique des exports ») :
-   un CSV qui commence par `User_ID,UTC_Time,Account,Operation,Coin,Change,Remark`.
+Deux exports possibles, les deux sont acceptés (français ou anglais) :
 
-Achats, ventes, conversions, frais, intérêts Earn/staking, dépôts et retraits sont tous pris en compte.
-Les montants en EUR sont calculés au cours du jour de chaque opération.
+**Historique des transactions — recommandé** (le plus complet : dépôts, retraits, intérêts Earn, conversions) :
+1. Sur **binance.com** : **Portefeuille › Vue d'ensemble › Historique des transactions**.
+2. **Exporter › Générer tous les relevés** : compte **Tous**, crypto **Toutes**, depuis l'ouverture
+   (un export par année si la période est limitée).
+3. Le CSV commence par `User_ID,UTC_Time,Account,Operation,Coin,Change,Remark`.
+
+**Historique des trades Spot** (achats/ventes uniquement) :
+**Ordres › Ordres Spot › Historique des trades › Exporter**. Le CSV commence par
+`N° de commande,Durée,Paire,Côté,Prix,Exécuté,Montant,Frais`. Choisissez la période **la plus longue** :
+si une vente dépasse les achats du fichier, finmon signale qu'il manque de l'historique.
+
+Les achats payés en USDC/USDT sont convertis en euros au taux du dollar du jour.
 
 #### 🔴 Interactive Brokers — relevé d'activité annuel
 

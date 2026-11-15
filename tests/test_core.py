@@ -166,3 +166,40 @@ def test_manual_buy_in_usd(tmp_path):
     assert row["amount"] == pytest.approx(-(400 + 1.25) / 1.25)
     assert db.read("SELECT COUNT(*) n FROM trades WHERE kind='deposit'")["n"][0] == 1
     assert manual.ensure_account(db, "mon cto") == acc
+
+
+# ---------------------------------------------------------------- formats réels (anonymisés)
+from pathlib import Path  # noqa: E402
+
+FIX = Path(__file__).parent / "fixtures"
+
+
+def test_ibkr_french_statement(tmp_path):
+    db = _db_with_market(tmp_path)
+    text = (FIX / "ibkr_activity_fr.csv").read_text(encoding="utf-8")
+    assert ibkr.detect_text(text)
+    n, warn = ibkr.import_statement(db, text, online=False)
+    assert n == 1
+    dep = db.read("SELECT kind, amount, date FROM trades").iloc[0]
+    assert (dep["kind"], dep["amount"], dep["date"]) == ("deposit", 100.0, "2025-03-14")
+
+
+def test_binance_spot_trades_french(tmp_path):
+    db = _db_with_market(tmp_path)
+    days = pd.date_range("2025-01-01", "2026-12-31").strftime("%Y-%m-%d")
+    db.upsert("fx_rates", pd.DataFrame({"currency": "USD", "date": days, "rate": 1.25}), mode="replace")
+    db.upsert("prices", pd.DataFrame({"symbol": "BTC-USD", "date": days, "close": 80000.0}), mode="replace")
+    db.upsert("prices", pd.DataFrame({"symbol": "ETH-USD", "date": days, "close": 2500.0}), mode="replace")
+    df = read_csv_auto(FIX / "binance_spot_trades_fr.csv")
+    assert binance.detect(df) and binance.detect_spot(df)
+    led = binance.spot_to_ledger(df)
+    n, warn = binance.import_ledger(db, led, online=False)
+    t = db.read("SELECT date, kind, isin, quantity, amount FROM trades ORDER BY date, kind")
+    btc_eur = t[(t["date"] == "2026-02-06") & (t["kind"] == "buy")]
+    assert btc_eur["quantity"].iloc[0] == pytest.approx(0.00100 + 0.00800)          # 2 exécutions, 1 ordre
+    assert btc_eur["amount"].iloc[0] == pytest.approx(-(60.00 + 480.00))   # montant EUR exact
+    eth_usdc = t[(t["isin"] == "CRYPTO-ETH") & (t["kind"] == "buy")]
+    assert eth_usdc["amount"].iloc[0] == pytest.approx(-1000.00 / 1.25)          # USDC = liquidités en USD
+    sell = t[(t["kind"] == "sell") & (t["date"] == "2026-01-19")]
+    assert sell["amount"].iloc[0] == pytest.approx(1350.00 / 1.25)
+    assert db.read("SELECT COUNT(*) n FROM trades WHERE isin = 'CRYPTO-USDC'")["n"][0] == 0

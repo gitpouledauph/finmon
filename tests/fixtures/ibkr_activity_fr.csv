@@ -1,0 +1,15 @@
+Statement,Header,Nom champ,Valeur champ
+Statement,Data,BrokerName,Interactive Brokers Ireland Limited
+Statement,Data,Title,Relevé de compte
+Statement,Data,Period,"Janvier 1, 2025 - Décembre 31, 2025"
+Informations du compte,Header,Nom champ,Valeur champ
+Informations du compte,Data,Nom,Exemple Utilisateur
+Informations du compte,Data,Compte,U00000000
+Informations du compte,Data,Devise de base,EUR
+Actif net,Header,Classe d'actif,Total précédent,Actuel long,Actuel short,Total actuel,Variation
+Actif net,Data,Trésorerie,0,100,0,100,100
+Dépôts et retraits,Header,Devise,Date de règlement,Description,Montant
+Dépôts et retraits,Data,EUR,2025-03-14,Transfert électronique de fonds,100
+Dépôts et retraits,Data,Total,,,100
+Codes,Header,Code,Signification,Code (Cont.),Signification (Cont.)
+Codes,Data,O,Ouverture de position

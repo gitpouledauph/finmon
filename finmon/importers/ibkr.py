@@ -1,16 +1,21 @@
-"""Import des relevés d'activité Interactive Brokers (Activity Statement, format CSV).
+"""Import des relevés d'activité Interactive Brokers (Activity Statement, CSV), en anglais ou en français.
 
-Le CSV IBKR empile des sections : chaque ligne commence par le nom de section
-puis « Header » / « Data » / « Total »... On lit :
+Le CSV IBKR empile des sections : chaque ligne commence par le nom de section puis
+« Header » / « Data ». Les noms de sections et de colonnes dépendent de la langue du
+portail ; on les reconnaît par mots-clés :
 
-* Trades                          -> achats / ventes (actions, ETF ; le Forex est ignoré)
-* Deposits & Withdrawals          -> versements / retraits
-* Dividends, Withholding Tax      -> dividendes (nets de retenue)
-* Interest, Fees                  -> intérêts, frais
-* Financial Instrument Information-> ISIN de chaque symbole
-* Open Positions                  -> photo des quantités en fin de relevé (rapprochement)
+| Contenu                     | Anglais                            | Français                                   |
+|-----------------------------|------------------------------------|--------------------------------------------|
+| achats / ventes             | Trades                             | Transactions                               |
+| versements / retraits       | Deposits & Withdrawals             | Dépôts et retraits                         |
+| dividendes                  | Dividends                          | Dividendes                                 |
+| retenue à la source         | Withholding Tax                    | Retenue à la source / Impôt retenu…        |
+| intérêts, frais             | Interest, Fees                     | Intérêts, Frais                            |
+| ISIN des titres             | Financial Instrument Information   | Informations sur l'instrument financier    |
+| positions de fin de période | Open Positions                     | Positions ouvertes                         |
 
-Les montants en devise sont convertis en EUR au taux du jour de l'opération.
+Les montants en devise sont convertis en EUR au taux du jour de l'opération. Les opérations
+de change (EUR.USD…) sont ignorées : seule compte la valeur en euros.
 """
 from __future__ import annotations
 
@@ -22,29 +27,93 @@ import pandas as pd
 
 from .. import market
 from ..db import DB
-from ..parsing import read_text, stable_ids, to_number
+from ..parsing import norm, read_text, stable_ids, to_number
 
 ACCOUNT_ID = "ibkr"
+ISIN_RE = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}\d$")
+
+MONTHS_FR = {"janvier": "January", "fevrier": "February", "février": "February", "mars": "March",
+             "avril": "April", "mai": "May", "juin": "June", "juillet": "July", "aout": "August",
+             "août": "August", "septembre": "September", "octobre": "October", "novembre": "November",
+             "decembre": "December", "décembre": "December"}
+
+
+# --------------------------------------------------------------------------
+# Reconnaissance des sections et colonnes (multilingue)
+# --------------------------------------------------------------------------
+def section_kind(name: str) -> str | None:
+    n = norm(name)
+    if n in ("statement", "releve"):
+        return "statement"
+    if n in ("trades", "transactions", "operations", "negociations", "executions"):
+        return "trades"
+    if ("deposit" in n and "withdraw" in n) or ("depot" in n and "retrait" in n):
+        return "cash"
+    if "withholding" in n or "retenue" in n or "impotretenu" in n:
+        return "withholding"
+    if "paymentinlieu" in n or "paiementtenantlieu" in n or "paiementenlieu" in n:
+        return "dividends"
+    if n.startswith(("dividend", "dividende")) and "accru" not in n and "courus" not in n:
+        return "dividends"
+    if n.startswith(("interest", "interet")) and "accru" not in n and "courus" not in n:
+        return "interest"
+    if n in ("fees", "frais", "autresfrais", "otherfees"):
+        return "fees"
+    if n in ("openpositions", "positionsouvertes"):
+        return "positions"
+    if "instrument" in n and ("information" in n or "financ" in n):
+        return "instruments"
+    return None
+
+
+COLS = {
+    "currency": ("currency", "devise"),
+    "date": ("settledate", "datedereglement", "date"),
+    "datetime": ("datetime", "dateheure", "date"),
+    "description": ("description", "libelle"),
+    "amount": ("amount", "montant"),
+    "symbol": ("symbol", "symbole"),
+    "quantity": ("quantity", "quantite"),
+    "proceeds": ("proceeds", "produit", "produits", "recettes", "montantbrut"),
+    "fee": ("commfee", "commtarif", "commfrais", "commissionfrais", "commission", "frais"),
+    "category": ("assetcategory", "categoriedactifs", "categoriedactif", "classedactif", "classedactifs"),
+    "discriminator": ("datadiscriminator", "discriminateurdedonnees", "discriminateur"),
+    "security_id": ("securityid", "iddutitre", "identifiantdutitre", "identifiantdetitre", "idtitre",
+                    "identifiantdesecurite", "isin"),
+    "field": ("fieldname", "nomchamp", "nomduchamp"),
+    "value": ("fieldvalue", "valeurchamp", "valeurduchamp"),
+}
+
+
+def _get(rec: dict, key: str) -> str:
+    lookup = {norm(k): v for k, v in rec.items()}
+    for c in COLS[key]:
+        if c in lookup and str(lookup[c]).strip() != "":
+            return str(lookup[c]).strip()
+    return ""
 
 
 def detect_text(text: str) -> bool:
-    head = text[:4000]
-    return head.startswith(("Statement,Header", "﻿Statement,Header")) or "Trades,Header,DataDiscriminator" in head
+    head = text[:5000].lstrip("﻿")
+    return head.startswith("Statement,Header") or "Trades,Header,DataDiscriminator" in head
 
 
-def parse_sections(text: str) -> dict[str, pd.DataFrame]:
-    sections: dict[str, list[dict]] = {}
+def parse_sections(text: str) -> dict[str, list[dict]]:
+    """Regroupe les lignes « Data » par type de section, avec l'en-tête courant."""
+    out: dict[str, list[dict]] = {}
     headers: dict[str, list[str]] = {}
-    for row in csv.reader(io.StringIO(text)):
+    for row in csv.reader(io.StringIO(text.lstrip("﻿"))):
         if len(row) < 2:
             continue
-        sec, typ = row[0].strip().lstrip("﻿"), row[1].strip()
+        sec, typ = row[0].strip(), row[1].strip()
         if typ == "Header":
             headers[sec] = [c.strip() for c in row[2:]]
         elif typ == "Data" and sec in headers:
-            vals = row[2:] + [""] * (len(headers[sec]) - len(row[2:]))
-            sections.setdefault(sec, []).append(dict(zip(headers[sec], vals)))
-    return {k: pd.DataFrame(v) for k, v in sections.items()}
+            kind = section_kind(sec)
+            if kind:
+                vals = row[2:] + [""] * (len(headers[sec]) - len(row[2:]))
+                out.setdefault(kind, []).append(dict(zip(headers[sec], vals)))
+    return out
 
 
 def _date(s: str):
@@ -52,6 +121,20 @@ def _date(s: str):
     return pd.to_datetime(s, errors="coerce")
 
 
+def _period_end(stmt: list[dict]):
+    for r in stmt:
+        if norm(_get(r, "field")) in ("period", "periode"):
+            end = _get(r, "value").split("-")[-1].strip()
+            for fr, en in MONTHS_FR.items():
+                end = re.sub(fr, en, end, flags=re.I)
+            d = pd.to_datetime(end, errors="coerce")
+            return None if pd.isna(d) else d
+    return None
+
+
+# --------------------------------------------------------------------------
+# Import
+# --------------------------------------------------------------------------
 def import_file(db: DB, path, online: bool = True) -> tuple[str, int]:
     text = read_text(path)
     name = getattr(path, "name", str(path))
@@ -70,101 +153,80 @@ def import_statement(db: DB, text: str, source: str = "", online: bool = True) -
               mode="ignore")
 
     isin_of: dict[str, str] = {}
-    fii = secs.get("Financial Instrument Information")
-    if fii is not None and not fii.empty:
-        for r in fii.to_dict("records"):
-            sid = (r.get("Security ID") or "").strip()
-            if r.get("Symbol"):
-                isin_of[r["Symbol"].strip()] = sid if re.match(r"^[A-Z]{2}[A-Z0-9]{9}\d$", sid) else f"IBKR:{r['Symbol'].strip()}"
+    for r in secs.get("instruments", []):
+        sym, sid = _get(r, "symbol"), _get(r, "security_id")
+        if sym:
+            isin_of[sym] = sid if ISIN_RE.match(sid) else f"IBKR:{sym}"
 
     rows: list[dict] = []
-    all_dates = []
 
     def eur(amount: float, ccy: str, d) -> float | None:
         r = market.fx_on(db, ccy, d, online)
         return None if r is None else amount / r
 
-    # ---------------- trades ----------------
-    t = secs.get("Trades")
-    if t is not None and not t.empty:
-        t = t[(t.get("DataDiscriminator", "Order").isin(["Order", "Trade", ""]))]
-        for r in t.to_dict("records"):
-            cat = (r.get("Asset Category") or "").lower()
-            if "forex" in cat:
-                continue
-            if not any(k in cat for k in ("stock", "fund", "etf", "bond", "crypto")):
-                warnings.append(f"Ignoré (catégorie {r.get('Asset Category')}) : {r.get('Symbol')}")
-                continue
-            d = _date(r.get("Date/Time", ""))
-            qty = to_number(r.get("Quantity"))
-            proceeds = to_number(r.get("Proceeds")) or 0.0
-            fee = to_number(r.get("Comm/Fee")) or 0.0
-            ccy = (r.get("Currency") or "EUR").strip()
-            if pd.isna(d) or not qty:
-                continue
-            all_dates.append(d)
-            sym = (r.get("Symbol") or "").strip()
-            amt = eur(proceeds + fee, ccy, d)
-            rows.append({"date": d, "kind": "buy" if qty > 0 else "sell", "isin": isin_of.get(sym, f"IBKR:{sym}"),
-                         "name": sym, "quantity": abs(qty), "amount": amt,
-                         "fees": abs(eur(fee, ccy, d) or 0.0), "ccy": ccy, "symbol": sym})
+    # ---------------- achats / ventes ----------------
+    for r in secs.get("trades", []):
+        disc = _get(r, "discriminator")
+        if disc and norm(disc) not in ("order", "trade", "ordre", "transaction"):
+            continue
+        cat = norm(_get(r, "category"))
+        if "forex" in cat or "change" in cat:
+            continue
+        if not any(k in cat for k in ("stock", "action", "fund", "fonds", "etf", "bond", "obligation", "crypto")):
+            warnings.append(f"Ignoré (catégorie « {_get(r, 'category')} ») : {_get(r, 'symbol')}")
+            continue
+        d = _date(_get(r, "datetime"))
+        qty = to_number(_get(r, "quantity"))
+        proceeds = to_number(_get(r, "proceeds")) or 0.0
+        fee = to_number(_get(r, "fee")) or 0.0
+        ccy = _get(r, "currency") or "EUR"
+        if pd.isna(d) or not qty:
+            continue
+        sym = _get(r, "symbol")
+        rows.append({"date": d, "kind": "buy" if qty > 0 else "sell", "isin": isin_of.get(sym, f"IBKR:{sym}"),
+                     "name": sym, "quantity": abs(qty), "amount": eur(proceeds + fee, ccy, d),
+                     "fees": abs(eur(fee, ccy, d) or 0.0), "symbol": sym})
 
-    # ---------------- cash ----------------
-    def cash_section(name, kind, sign_kind=None):
-        df = secs.get(name)
-        if df is None or df.empty:
-            return
-        dcol = "Settle Date" if "Settle Date" in df.columns else "Date"
-        for r in df.to_dict("records"):
-            ccy = (r.get("Currency") or "").strip()
-            if not ccy or ccy.lower().startswith("total"):
+    # ---------------- mouvements d'espèces ----------------
+    for kind, default in (("cash", None), ("dividends", "dividend"), ("withholding", "tax"),
+                          ("interest", "interest"), ("fees", "fee")):
+        for r in secs.get(kind, []):
+            ccy = _get(r, "currency")
+            if not ccy or ccy.lower().startswith("total") or len(ccy) != 3:
                 continue
-            d = _date(r.get(dcol, ""))
-            a = to_number(r.get("Amount"))
+            d = _date(_get(r, "date"))
+            a = to_number(_get(r, "amount"))
             if pd.isna(d) or not a:
                 continue
-            all_dates.append(d)
-            k = kind if sign_kind is None else (sign_kind[0] if a > 0 else sign_kind[1])
-            desc = r.get("Description", "")
-            m = re.match(r"^([A-Z0-9.\-]+)\s*\(([A-Z]{2}[A-Z0-9]{9}\d)\)", desc or "")
-            rows.append({"date": d, "kind": k, "isin": m.group(2) if m else None, "name": (desc or name)[:80],
-                         "quantity": None, "amount": eur(a, ccy, d), "fees": 0.0, "ccy": ccy, "symbol": None})
+            k = default or ("deposit" if a > 0 else "withdrawal")
+            desc = _get(r, "description")
+            m = re.match(r"^([A-Z0-9.\-]+)\s*\(([A-Z]{2}[A-Z0-9]{9}\d)\)", desc)
+            rows.append({"date": d, "kind": k, "isin": m.group(2) if m else None,
+                         "name": (desc or kind)[:80], "quantity": None, "amount": eur(a, ccy, d),
+                         "fees": 0.0, "symbol": None})
 
-    cash_section("Deposits & Withdrawals", None, ("deposit", "withdrawal"))
-    cash_section("Dividends", "dividend")
-    cash_section("Payment In Lieu Of Dividends", "dividend")
-    cash_section("Withholding Tax", "tax")
-    cash_section("Interest", "interest")
-    cash_section("Fees", "fee")
-
-    # ---------------- positions de fin de relevé ----------------
-    op = secs.get("Open Positions")
-    period_end = None
-    st = secs.get("Statement")
-    if st is not None and "Field Name" in st.columns:
-        per = st.loc[st["Field Name"] == "Period", "Field Value"]
-        if not per.empty:
-            period_end = pd.to_datetime(per.iloc[0].split("-")[-1].strip(), errors="coerce")
-    if op is not None and not op.empty and period_end is not None and not pd.isna(period_end):
-        op = op[op.get("DataDiscriminator", "Summary").isin(["Summary", ""])]
+    # ---------------- positions de fin de période ----------------
+    end = _period_end(secs.get("statement", []))
+    if end is not None:
         snaps = []
-        for r in op.to_dict("records"):
-            if "forex" in (r.get("Asset Category") or "").lower():
+        for r in secs.get("positions", []):
+            disc = _get(r, "discriminator")
+            if disc and norm(disc) not in ("summary", "synthese", "resume", "recapitulatif"):
                 continue
-            sym = (r.get("Symbol") or "").strip()
-            q = to_number(r.get("Quantity"))
+            if "forex" in norm(_get(r, "category")):
+                continue
+            sym, q = _get(r, "symbol"), to_number(_get(r, "quantity"))
             if sym and q:
-                snaps.append({"account_id": ACCOUNT_ID, "date": period_end.strftime("%Y-%m-%d"),
+                snaps.append({"account_id": ACCOUNT_ID, "date": end.strftime("%Y-%m-%d"),
                               "isin": isin_of.get(sym, f"IBKR:{sym}"), "name": sym, "quantity": q,
                               "price": None, "avg_cost": None, "value": None})
         db.upsert("position_snapshots", pd.DataFrame(snaps), mode="replace")
 
     if not rows:
-        return 0, warnings + ["Aucune opération trouvée — est-ce bien un « Activity Statement » au format CSV ?"]
+        return 0, warnings + ["Aucune opération dans ce relevé (ni achat, ni versement, ni dividende)."]
     out = pd.DataFrame(rows)
     if out["amount"].isna().any():
         warnings.append("Taux de change introuvable pour certaines opérations (hors ligne ?) : relancez l'import connecté.")
-    # Instruments : ticker IBKR comme point de départ (devise du titre connue).
     inst = out.dropna(subset=["symbol"]).drop_duplicates("isin")
     if not inst.empty:
         known = set(db.read("SELECT isin FROM instruments")["isin"])
@@ -177,11 +239,13 @@ def import_statement(db: DB, text: str, source: str = "", online: bool = True) -
                 new.append(row)
         if new:
             db.upsert("instruments", pd.DataFrame(new), mode="replace")
+    for c in ("quantity", "amount"):
+        out[c] = pd.to_numeric(out[c], errors="coerce")
     out["account_id"] = ACCOUNT_ID
     out["taxes"] = 0.0
     out["source"] = source
     out["d"] = pd.to_datetime(out["date"]).dt.strftime("%Y-%m-%d")
-    out["id"] = stable_ids(out.assign(ts=out["date"].astype(str), q=out["quantity"].round(8), a=out["amount"].round(2)),
+    out["id"] = stable_ids(out.assign(ts=out["date"].astype(str), q=out["quantity"].round(8)),
                            ["ts", "kind", "isin", "q", "name"], "ibkr")
     n = db.upsert("trades", out[["id", "account_id", "d", "kind", "isin", "name", "quantity", "amount", "fees",
                                  "taxes", "source"]].rename(columns={"d": "date"}))

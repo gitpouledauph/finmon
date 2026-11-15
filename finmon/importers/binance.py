@@ -1,7 +1,15 @@
-"""Import de l'historique Binance (« Transaction History » / relevé complet).
+"""Import de l'historique Binance. Deux exports sont reconnus (anglais ou français) :
 
-Format : User_ID,UTC_Time,Account,Operation,Coin,Change,Remark
-Une ligne = un mouvement d'une crypto (ou de l'EUR) sur un sous-compte.
+1. **Historique des transactions** (relevé complet, le plus riche) :
+   ``User_ID,UTC_Time,Account,Operation,Coin,Change,Remark`` — une ligne = un mouvement d'une
+   crypto (ou de l'EUR) ; contient aussi dépôts, retraits, intérêts Earn, conversions.
+2. **Historique des trades Spot** (Ordres › Historique des trades) :
+   ``N° de commande,Durée,Paire,Côté,Prix,Exécuté,Montant,Frais`` (en anglais
+   ``Date(UTC),Pair,Side,Price,Executed,Amount,Fee``) — uniquement les achats/ventes au comptant.
+   Converti en mouvements puis traité comme le format 1.
+
+Les stablecoins (USDC, USDT…) et l'EUR sont des **liquidités** : leur valeur EUR sert de montant
+aux achats/ventes ; ils ne forment pas de position.
 
 Règles :
 * EUR déposé / retiré           -> versement / retrait (flux du compte)
@@ -24,6 +32,9 @@ from ..parsing import norm, pick, read_csv_auto, stable_ids, to_numbers
 
 ACCOUNT_ID = "binance"
 FIAT = {"EUR"}
+STABLE = {"USD", "USDC", "USDT", "FDUSD", "BUSD", "DAI", "TUSD", "USDP"}
+CASH = FIAT | STABLE
+QUOTES = sorted(CASH | {"BTC", "ETH", "BNB", "TRY", "BRL", "GBP"}, key=len, reverse=True)
 
 INTERNAL = ("transferbetween", "subscription", "redemption", "savingspurchase", "savingsprincipal",
             "stakingpurchase", "posfee", "transferin", "transferout", "toaccount", "fromaccount",
@@ -37,7 +48,51 @@ FEE = ("fee",)
 
 
 def detect(df: pd.DataFrame) -> bool:
-    return all(pick(df, c) for c in ("UTC_Time", "Operation", "Coin", "Change"))
+    return all(pick(df, c) for c in ("UTC_Time", "Operation", "Coin", "Change")) or detect_spot(df)
+
+
+def detect_spot(df: pd.DataFrame) -> bool:
+    return bool(pick(df, "Paire", "Pair") and pick(df, "Côté", "Side") and pick(df, "Exécuté", "Executed")
+                and pick(df, "Montant", "Amount"))
+
+
+_QTY_RE = re.compile(r"^\s*([-+]?[\d.,]+(?:[eE][-+]?\d+)?)\s*([A-Z0-9]*)\s*$")
+
+
+def _qty(s: str) -> tuple[float | None, str]:
+    """« 0.00100BTC » -> (0.00100, "BTC")."""
+    m = _QTY_RE.match(str(s).replace(" ", ""))
+    if not m:
+        return None, ""
+    return float(m.group(1).replace(",", "")), m.group(2)
+
+
+def spot_to_ledger(df: pd.DataFrame) -> pd.DataFrame:
+    """Convertit l'historique des trades Spot en mouvements (format « transaction history »)."""
+    c_time = pick(df, "Durée", "Date(UTC)", "Date", "Time", "Heure", "Date (UTC)")
+    c_pair, c_side = pick(df, "Paire", "Pair"), pick(df, "Côté", "Side")
+    c_exec, c_amt, c_fee = pick(df, "Exécuté", "Executed"), pick(df, "Montant", "Amount"), pick(df, "Frais", "Fee")
+    rows = []
+    for r in df.to_dict("records"):
+        q, base = _qty(r[c_exec])
+        a, quote = _qty(r[c_amt])
+        if q is None or a is None:
+            continue
+        pair = str(r[c_pair]).upper()
+        if not base:
+            base = pair[: len(pair) - len(quote)] if quote and pair.endswith(quote) else pair
+        if not quote:
+            quote = next((x for x in QUOTES if pair.endswith(x) and pair != x), "")
+            base = pair[: len(pair) - len(quote)]
+        buy = str(r[c_side]).strip().upper() in ("BUY", "ACHAT", "ACHETER")
+        t = r[c_time]
+        rows.append([t, "Buy" if buy else "Sell", base, q if buy else -q])
+        rows.append([t, "Buy" if buy else "Sell", quote, -a if buy else a])
+        if c_fee:
+            fq, fcoin = _qty(r[c_fee])
+            if fq:
+                rows.append([t, "Transaction Fee", fcoin or base, -abs(fq)])
+    return pd.DataFrame(rows, columns=["UTC_Time", "Operation", "Coin", "Change"])
 
 
 def _kind(op: str) -> str:
@@ -70,11 +125,17 @@ def _dates(s: pd.Series) -> pd.Series:
 def import_file(db: DB, path, online: bool = True) -> tuple[str, int]:
     df = read_csv_auto(path)
     name = getattr(path, "name", str(path))
+    spot = detect_spot(df) and not pick(df, "Operation")
+    if spot:
+        df = spot_to_ledger(df)
     n, warnings = import_ledger(db, df, source=name, online=online)
+    if spot:
+        warnings.append("Export « Historique des trades » : il ne contient ni dépôts, ni retraits, ni intérêts Earn. "
+                        "Pour un suivi complet, importez aussi l'« Historique des transactions ».")
     db.log("binance", name, n, "ok", "; ".join(warnings[:5]))
     for w in warnings:
         db.log("binance", name, 0, "warning", w)
-    return "binance", n
+    return ("binance (trades spot)" if spot else "binance"), n
 
 
 def _instrument(coin: str) -> str:
@@ -97,7 +158,7 @@ def import_ledger(db: DB, df: pd.DataFrame, source: str = "", online: bool = Tru
     if unk:
         warnings.append(f"Opérations Binance non reconnues (ignorées) : {unk}")
 
-    coins = sorted(set(led["coin"]) - FIAT)
+    coins = sorted(set(led["coin"]) - CASH)
     start = led["ts"].min().date()
     market.ensure_history(db, [f"{c}-USD" for c in coins], start, online)
     market.ensure_history(db, ["USD"], start, online, fx=True)
@@ -105,24 +166,32 @@ def import_ledger(db: DB, df: pd.DataFrame, source: str = "", online: bool = Tru
     def value(coin, qty, ts):
         if coin in FIAT:
             return abs(qty)
+        if coin in STABLE:  # 1 stablecoin ≈ 1 USD
+            r = market.fx_on(db, "USD", ts.normalize(), online=False)
+            return abs(qty) / r if r else None
         return market.eur_value(db, f"{coin}-USD", "USD", abs(qty), ts.normalize(), online=False)
+
+    def cash_eur(coin, qty, ts):
+        v = value(coin, qty, ts)
+        return None if v is None else (v if qty > 0 else -v)
 
     rows = []
 
     def add(ts, kind, coin, qty, amount, note):
-        rows.append({"date": ts, "kind": kind, "isin": None if coin in FIAT else _instrument(coin),
-                     "name": coin if coin not in FIAT else note, "quantity": abs(qty) if coin not in FIAT else None,
+        is_cash = coin in CASH
+        rows.append({"date": ts, "kind": kind, "isin": None if is_cash else _instrument(coin),
+                     "name": note if is_cash else coin, "quantity": None if is_cash else abs(qty),
                      "amount": amount, "note": note})
 
     for r in led[led["kind"].isin(["deposit", "withdraw", "reward"])].itertuples():
         if r.kind == "reward":
-            if r.coin in FIAT:
-                add(r.ts, "interest", r.coin, 0, r.change, r.op)
+            if r.coin in CASH:
+                add(r.ts, "interest", r.coin, 0, cash_eur(r.coin, r.change, r.ts), r.op)
             elif r.change > 0:
                 add(r.ts, "reward", r.coin, r.change, 0.0, r.op)
             continue
-        if r.coin in FIAT:
-            add(r.ts, "deposit" if r.kind == "deposit" else "withdrawal", r.coin, 0, r.change, r.op)
+        if r.coin in CASH:
+            add(r.ts, "deposit" if r.change > 0 else "withdrawal", r.coin, 0, cash_eur(r.coin, r.change, r.ts), r.op)
         else:
             add(r.ts, "transfer_in" if r.change > 0 else "transfer_out", r.coin, r.change, None, r.op)
 
@@ -132,9 +201,12 @@ def import_ledger(db: DB, df: pd.DataFrame, source: str = "", online: bool = Tru
         legs = g[g["kind"] == "trade"].groupby("coin")["change"].sum()
         legs = legs[legs.abs() > 1e-12]
         fees = g[g["kind"] == "fee"].groupby("coin")["change"].sum()
-        eur = float(legs.get("EUR", 0.0))
-        pos = legs[(legs > 0) & ~legs.index.isin(FIAT)]
-        neg = legs[(legs < 0) & ~legs.index.isin(FIAT)]
+        cash_legs = legs[legs.index.isin(CASH)]
+        cash_vals = [value(c, q, ts) for c, q in cash_legs.items()]
+        eur = sum(v if q > 0 else -v for v, q in zip(cash_vals, cash_legs.values) if v is not None) \
+            if cash_vals and all(v is not None for v in cash_vals) else 0.0
+        pos = legs[(legs > 0) & ~legs.index.isin(CASH)]
+        neg = legs[(legs < 0) & ~legs.index.isin(CASH)]
         if abs(eur) > 0:
             total = abs(eur)
         else:
@@ -150,16 +222,18 @@ def import_ledger(db: DB, df: pd.DataFrame, source: str = "", online: bool = Tru
                 amt = sign * total * share if total is not None else None
                 add(ts, side, c, q, amt, "Binance " + ", ".join(sorted(set(g["op"]))))
         if pos.empty and neg.empty and abs(eur) > 0:
-            warnings.append(f"{ts} : mouvement EUR isolé {eur:+.2f} (opération {sorted(set(g['op']))})")
+            pass  # échange entre liquidités (EUR <-> USDC) : sans effet sur le portefeuille
         for c, q in fees.items():
-            if c in FIAT:
-                add(ts, "fee", c, 0, q, "Frais Binance")
+            if c in CASH:
+                add(ts, "fee", c, 0, cash_eur(c, q, ts), "Frais Binance")
             elif q < 0:
                 add(ts, "sell", c, q, 0.0, "Frais Binance")   # quantité perdue, sans produit
 
     if not rows:
         return 0, warnings
     out = pd.DataFrame(rows)
+    for c in ("quantity", "amount"):
+        out[c] = pd.to_numeric(out[c], errors="coerce")
     out["account_id"] = ACCOUNT_ID
     out["fees"], out["taxes"], out["source"] = 0.0, 0.0, source
     out["d"] = pd.to_datetime(out["date"]).dt.strftime("%Y-%m-%d")
@@ -167,6 +241,15 @@ def import_ledger(db: DB, df: pd.DataFrame, source: str = "", online: bool = Tru
                            ["ts", "kind", "isin", "q", "note"], "binance")
     n = db.upsert("trades", out[["id", "account_id", "d", "kind", "isin", "name", "quantity", "amount", "fees",
                                  "taxes", "source"]].rename(columns={"d": "date"}))
+    # Ventes supérieures aux quantités connues : historique incomplet.
+    sign = out["kind"].map({"buy": 1, "transfer_in": 1, "reward": 1, "sell": -1, "transfer_out": -1}).fillna(0)
+    held = (out.assign(q=out["quantity"].fillna(0) * sign).sort_values("date")
+            .groupby("isin")["q"].cumsum())
+    short = out.loc[held[held < -1e-9].index].groupby("name")["date"].min()
+    for coin, d in short.items():
+        warnings.append(f"{coin} : vente supérieure aux achats connus le {pd.Timestamp(d):%d/%m/%Y} — "
+                        f"il manque des achats ou dépôts plus anciens (importez un historique plus long, "
+                        f"ou saisissez un « Transfert entrant » / un achat initial).")
     missing = out[out["amount"].isna() & out["kind"].isin(["buy", "sell"])]
     if not missing.empty:
         warnings.append(f"{len(missing)} échanges sans valeur EUR (cours introuvable) : prix de revient estimé au cours du marché.")

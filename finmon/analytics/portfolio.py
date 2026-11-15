@@ -130,6 +130,11 @@ def build(trades: pd.DataFrame, snapshots: pd.DataFrame, instruments: pd.DataFra
 
         # Événements + rapprochement avec les photos de portefeuille.
         events = [(r.date, r.kind, r.quantity or 0.0, r.amount) for r in ev.itertuples()]
+        # Relevé complet du compte où la ligne n'apparaît plus : sortie (expirée, désactivée…).
+        acc_snap_dates = set(sn.loc[sn["account_id"] == account_id, "date"].dt.normalize())
+        own = set(snap["date"].dt.normalize())
+        for d in sorted(acc_snap_dates - own):
+            events.append((d, "gone", 0.0, None))
         qty_series = _apply(events, F, px, days, snap, warnings, name)
         q, C, L, realized = qty_series
         adj_flow = realized.pop("adj_flow")
@@ -236,6 +241,8 @@ def _apply(events, F: pd.Series, px: pd.Series, days: pd.DatetimeIndex, snap: pd
     Fv = F.reindex(days).values
     pxv = px.values
     reconciled = False
+    oversold: list = []
+    gone: list = []
     for i, d in enumerate(days):
         f = Fv[i] if np.isfinite(Fv[i]) and Fv[i] > 0 else 1.0
         for kind, qty, amount in by_day.get(d, []):
@@ -248,6 +255,9 @@ def _apply(events, F: pd.Series, px: pd.Series, days: pd.DatetimeIndex, snap: pd
                 Cr, Lr = C * frac, L * frac
                 if kind == "sell" and amount is not None and amount == amount:
                     proceeds = abs(amount)
+                    if qty > q * (1 + 1e-9):  # vente > détention connue (historique incomplet)
+                        proceeds *= q / qty
+                        oversold.append(d)
                     real["realized"] += proceeds - Cr
                     if Lr > 0:
                         rl = (proceeds / f) / Lr - 1
@@ -259,6 +269,11 @@ def _apply(events, F: pd.Series, px: pd.Series, days: pd.DatetimeIndex, snap: pd
                     q, C, L = 0.0, 0.0, 0.0
                 else:
                     q, C, L = q - qty, C - Cr, L - Lr
+            if kind == "gone" and q > 1e-12:
+                real["realized"] -= C
+                real["r_local"] -= C
+                gone.append(d)
+                q, C, L = 0.0, 0.0, 0.0
         s = snaps.get(d)
         if s is not None and s.quantity is not None and s.quantity == s.quantity:
             diff = s.quantity - q
@@ -285,6 +300,12 @@ def _apply(events, F: pd.Series, px: pd.Series, days: pd.DatetimeIndex, snap: pd
         q_a[i], C_a[i], L_a[i] = q, C, L
     if reconciled:
         warnings.append(f"« {name} » : quantité recalée sur le relevé de portefeuille (opérations manquantes ou split).")
+    if gone:
+        warnings.append(f"« {name} » absent du relevé de portefeuille du {gone[0]:%d/%m/%Y} : considéré comme sorti "
+                        f"(expiré, désactivé ou vendu hors historique) — perte comptée dans le réalisé.")
+    if oversold:
+        warnings.append(f"« {name} » : vente le {oversold[0]:%d/%m/%Y} supérieure à la quantité connue — il manque des "
+                        f"achats/dépôts antérieurs ; seule la part connue est comptée dans la plus-value réalisée.")
     real["adj_flow"] = adj
     return q_a, C_a, L_a, real
 

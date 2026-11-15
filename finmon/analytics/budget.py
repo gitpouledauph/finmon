@@ -105,7 +105,8 @@ def monthly_by_category(df: pd.DataFrame) -> pd.DataFrame:
 def monthly_flows(df: pd.DataFrame) -> pd.DataFrame:
     """Revenus, dépenses, épargne et taux d'épargne par mois."""
     if df.empty:
-        return pd.DataFrame(columns=["income", "expenses", "savings", "rate"])
+        return pd.DataFrame(columns=["income", "expenses", "savings", "rate"], dtype=float,
+                            index=pd.DatetimeIndex([], name="month"))
     inc = df[df["cat_type"] == "income"].groupby("month")["amount"].sum()
     exp = expenses(df).groupby("month")["spend"].sum()
     out = pd.DataFrame({"income": inc, "expenses": exp}).fillna(0.0).sort_index()

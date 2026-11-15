@@ -23,13 +23,13 @@ Dans le dashboard, la barre latérale bascule entre **Mes données** et **Démo*
 
 | Compte | Fichier |
 |---|---|
-| Binance | Historique des transactions exporté (CSV `User_ID,UTC_Time,Account,Operation,Coin,Change,Remark`) |
-| Interactive Brokers | Un *Activity Statement* annuel au format CSV par année |
+| Binance | Historique des transactions (recommandé) ou Historique des trades Spot, en français ou anglais |
+| Interactive Brokers | Un *relevé d'activité* annuel CSV par année (français ou anglais) |
 | Trade Republic | `python -m finmon export-tr` (pytr, une seule fois), puis `rm -rf ~/.pytr` |
 | Boursorama | Export CSV des opérations (courant, livrets) ; positions et mouvements du PEA/CTO |
 | Autre | Modèle CSV finmon (téléchargeable dans le dashboard) |
 
-Détail pas à pas : [docs/GUIDE_CSV.md](docs/GUIDE_CSV.md).
+Détail pas à pas : [docs/GUIDE_CSV.md](docs/GUIDE_CSV.md) · formats reconnus colonne par colonne : [docs/FORMATS.md](docs/FORMATS.md).
 
 **2. Ensuite : plus aucune connexion.** Chaque nouvelle opération (achat, vente, dividende, versement…)
 se saisit dans la page **➕ Saisir une opération** : compte, ticker Yahoo, date, quantité, prix, devise, frais.

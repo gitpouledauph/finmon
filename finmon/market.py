@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import date, timedelta
 
 import pandas as pd
@@ -49,11 +50,11 @@ PROFILES = [
         "asset_class": "Actions", "exposure": {"JPY": 1.0}, "regions": {"Japon": 1.0}}),
     (("bitcoin", "ethereum", "crypto", "solana"), {
         "asset_class": "Crypto", "exposure": {"USD": 1.0}, "regions": {"Monde": 1.0}}),
-    (("gold", "or physique", "silver", "commodit"), {
+    (("gold", "or physique", "silver", "commodit", "crude", "brent", "wti", "oil", "petrole", "natural gas"), {
         "asset_class": "Matières premières", "exposure": {"USD": 1.0}, "regions": {"Monde": 1.0}}),
     (("overnight", "€str", "estr", "monetaire", "money market", "cash"), {
         "asset_class": "Monétaire", "exposure": {"EUR": 1.0}, "regions": {"Europe": 1.0}}),
-    (("bond", "obligat", "treasury", "aggregate", "govt", "corp"), {
+    (("bond", "obligat", "treasury", "aggregate", "govt bond", "corporate bond", "corp bond"), {
         "asset_class": "Obligations", "exposure": {"EUR": 1.0}, "regions": {"Monde": 1.0}}),
 ]
 
@@ -123,9 +124,11 @@ def resolve_instrument(isin: str, name: str, online: bool = True) -> dict:
            "exposure": conf.get("exposure"), "regions": conf.get("regions"), "sectors": conf.get("sectors"),
            "resolved_by": "config" if conf else None}
     quote: dict = {}
-    # Identifiants internes : CRYPTO-BTC (Binance), TICKER:AAPL (saisie sans ISIN), IBKR:XYZ
-    if isin.startswith("CRYPTO-"):
-        coin = isin.split("-", 1)[1]
+    # Identifiants internes : CRYPTO-BTC (Binance), TICKER:AAPL (saisie sans ISIN), IBKR:XYZ,
+    # et pseudo-ISIN crypto de Trade Republic : XF000BTC0017 -> BTC
+    tr_crypto = re.match(r"^XF000([A-Z]{2,5}?)\d{3,4}$", isin)
+    if isin.startswith("CRYPTO-") or tr_crypto:
+        coin = tr_crypto.group(1) if tr_crypto else isin.split("-", 1)[1]
         row.update(ticker=row["ticker"] or f"{coin}-USD", currency=row["currency"] or "USD",
                    asset_class=row["asset_class"] or ("Monétaire" if coin in STABLES else "Crypto"),
                    name=row["name"] or coin, resolved_by=row["resolved_by"] or "crypto")
@@ -153,7 +156,7 @@ def resolve_instrument(isin: str, name: str, online: bool = True) -> dict:
             info = {}
         row["currency"] = row["currency"] or info.get("currency")
         qtype = (info.get("quoteType") or quote.get("quoteType") or "").upper()
-        if qtype == "EQUITY" and not prof:
+        if qtype == "EQUITY" and prof.get("asset_class") in (None, "Obligations", "Monétaire"):
             region, ccy = COUNTRY_REGION.get(info.get("country", ""), ("Autre", info.get("financialCurrency") or row["currency"]))
             prof = {"asset_class": "Actions", "exposure": {ccy or "EUR": 1.0}, "regions": {region: 1.0}}
             if info.get("sector"):
