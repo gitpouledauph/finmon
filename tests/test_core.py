@@ -257,3 +257,22 @@ def test_save_holdings_crypto_full_statement(tmp_path):
     # Ré-enregistrer le même jour remplace le relevé.
     manual.save_holdings(db, "binance", _d(2026, 11, 15), lines.iloc[:1], crypto=True, online=False)
     assert len(db.read("SELECT * FROM position_snapshots")) == 1
+
+
+def test_binance_transactions_french_converts(tmp_path):
+    db = _db_with_market(tmp_path)
+    days = pd.date_range("2025-01-01", "2026-12-31").strftime("%Y-%m-%d")
+    db.upsert("fx_rates", pd.DataFrame({"currency": "USD", "date": days, "rate": 1.25}), mode="replace")
+    for coin, px in (("ETH", 2500.0), ("SOL", 70.0)):
+        db.upsert("prices", pd.DataFrame({"symbol": f"{coin}-USD", "date": days, "close": px}), mode="replace")
+    df = read_csv_auto(FIX / "binance_transactions_fr.csv")
+    assert binance.detect(df) and not binance.detect_spot(df)
+    n, warn = binance.import_ledger(db, df, online=False)
+    t = db.read("SELECT date, kind, isin, quantity, amount FROM trades ORDER BY date, kind")
+    eth_buys = t[(t["isin"] == "CRYPTO-ETH") & (t["kind"] == "buy")]
+    assert list(eth_buys["amount"].round(2)) == [-99.0, -10.0]       # Convert EUR et achat par carte (6 s d'écart)
+    sol = t[t["isin"] == "CRYPTO-SOL"]
+    assert len(sol) == 1 and sol["quantity"].iloc[0] == pytest.approx(12.5)
+    assert sol["amount"].iloc[0] == pytest.approx(-1000 / 1.25)       # jambes à 1 s d'écart regroupées
+    assert not [w for w in warn if "supérieure" in w]                 # historique complet : pas de vente à découvert
+    assert t[t["kind"] == "deposit"]["amount"].sum() == 99

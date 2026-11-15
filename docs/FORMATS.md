@@ -40,7 +40,15 @@ Si une vente dépasse les achats connus, un avertissement signale qu'il manque d
 ### B. Historique des transactions (relevé complet) — recommandé
 
 Où : **Portefeuille › Vue d'ensemble › Historique des transactions › Exporter** (« Générer tous les relevés »).
-Colonnes : `User_ID,UTC_Time,Account,Operation,Coin,Change,Remark`.
+Colonnes en anglais `User_ID,UTC_Time,Account,Operation,Coin,Change,Remark` ou en français
+`Identifiant utilisateur,Durée,Compte,Opération,Jeton,Change,Remarque`. C'est **le seul export Binance complet** :
+il contient les conversions « Binance Convert » et les achats par carte, absents de l'historique des trades Spot.
+S'il est fourni, il remplace l'export Spot (sinon les achats seraient comptés deux fois).
+
+Regroupement des lignes en opérations :
+- ordres Spot (`Transaction Buy/Spend/Fee/Sold/Revenue`) : les lignes d'une même seconde ;
+- `Buy Crypto With Fiat` : la référence de la colonne Remarque (débit EUR et crédit crypto à quelques secondes d'écart) ;
+- `Binance Convert` : les jambes à moins de 5 s d'intervalle ; les allers-retours Spot ↔ Funding s'annulent.
 
 | Opérations Binance | Traitées comme |
 |---|---|

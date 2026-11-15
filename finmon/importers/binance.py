@@ -47,8 +47,22 @@ TRADE = ("buy", "sell", "transaction", "convert", "exchange", "otc", "autoinvest
 FEE = ("fee",)
 
 
+# Colonnes de l'« Historique des transactions » (anglais / français).
+LEDGER_COLS = {
+    "time": ("UTC_Time", "Durée", "Date", "Time", "Heure"),
+    "op": ("Operation", "Opération"),
+    "coin": ("Coin", "Jeton", "Monnaie", "Crypto"),
+    "change": ("Change", "Changement", "Variation", "Montant"),
+    "remark": ("Remark", "Remarque", "Note"),
+}
+
+
+def _col(df: pd.DataFrame, key: str) -> str | None:
+    return pick(df, *LEDGER_COLS[key])
+
+
 def detect(df: pd.DataFrame) -> bool:
-    return all(pick(df, c) for c in ("UTC_Time", "Operation", "Coin", "Change")) or detect_spot(df)
+    return bool(_col(df, "op") and _col(df, "coin") and pick(df, "Change", "Changement")) or detect_spot(df)
 
 
 def detect_spot(df: pd.DataFrame) -> bool:
@@ -125,7 +139,7 @@ def _dates(s: pd.Series) -> pd.Series:
 def import_file(db: DB, path, online: bool = True) -> tuple[str, int]:
     df = read_csv_auto(path)
     name = getattr(path, "name", str(path))
-    spot = detect_spot(df) and not pick(df, "Operation")
+    spot = detect_spot(df) and not _col(df, "op")
     if spot:
         df = spot_to_ledger(df)
     n, warnings = import_ledger(db, df, source=name, online=online)
@@ -138,6 +152,27 @@ def import_file(db: DB, path, online: bool = True) -> tuple[str, int]:
     return ("binance (trades spot)" if spot else "binance"), n
 
 
+def _trade_groups(tr: pd.DataFrame) -> pd.Series:
+    """Identifiant d'opération pour chaque ligne d'échange.
+
+    - « Transaction Buy/Spend/Fee… » (ordres Spot) : les lignes d'une même seconde ;
+    - « Buy Crypto With Fiat » : la référence en remarque (débit EUR et crédit crypto ont
+      quelques secondes d'écart) ;
+    - « Binance Convert » : les jambes à moins de 5 s d'intervalle (crypto et USDC peuvent
+      être horodatées à une seconde d'écart).
+    """
+    op = tr["op"].map(norm)
+    grp = pd.Series("t:" + tr["ts"].dt.floor("s").astype(str), index=tr.index)
+    fiat = op.str.contains("withfiat") & (tr["remark"] != "")
+    grp[fiat] = "f:" + tr.loc[fiat, "remark"]
+    conv = op.str.contains("convert") & ~fiat
+    if conv.any():
+        t = tr.loc[conv, "ts"].sort_values()
+        cluster = (t.diff() > pd.Timedelta(seconds=5)).cumsum()
+        grp[t.index] = "c:" + cluster.astype(str)
+    return grp
+
+
 def _instrument(coin: str) -> str:
     return f"CRYPTO-{coin}"
 
@@ -145,11 +180,13 @@ def _instrument(coin: str) -> str:
 def import_ledger(db: DB, df: pd.DataFrame, source: str = "", online: bool = True) -> tuple[int, list[str]]:
     db.upsert("accounts", pd.DataFrame([{"id": ACCOUNT_ID, "institution": "Binance", "name": "Binance",
                                          "type": "crypto", "currency": "EUR"}]), mode="ignore")
+    c_rem = _col(df, "remark")
     led = pd.DataFrame({
-        "ts": _dates(df[pick(df, "UTC_Time")]),
-        "op": df[pick(df, "Operation")].astype(str).str.strip(),
-        "coin": df[pick(df, "Coin")].astype(str).str.strip().str.upper(),
-        "change": to_numbers(df[pick(df, "Change")]),
+        "ts": _dates(df[_col(df, "time")]),
+        "op": df[_col(df, "op")].astype(str).str.strip(),
+        "coin": df[_col(df, "coin")].astype(str).str.strip().str.upper(),
+        "change": to_numbers(df[pick(df, "Change", "Changement", "Variation")]),
+        "remark": df[c_rem].fillna("").astype(str).str.strip() if c_rem else "",
     }).dropna(subset=["ts", "change"])
     led = led[led["change"] != 0]
     led["kind"] = led["op"].map(_kind)
@@ -197,7 +234,8 @@ def import_ledger(db: DB, df: pd.DataFrame, source: str = "", online: bool = Tru
 
     # Opérations d'échange, regroupées par seconde.
     tr = led[led["kind"].isin(["trade", "fee"])].copy()
-    for ts, g in tr.groupby(tr["ts"].dt.floor("s")):
+    for _, g in tr.groupby(_trade_groups(tr)):
+        ts = g["ts"].min().floor("s")
         legs = g[g["kind"] == "trade"].groupby("coin")["change"].sum()
         legs = legs[legs.abs() > 1e-12]
         fees = g[g["kind"] == "fee"].groupby("coin")["change"].sum()

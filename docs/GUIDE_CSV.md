@@ -20,7 +20,8 @@ Deux exports possibles, les deux sont acceptés (français ou anglais) :
 1. Sur **binance.com** : **Portefeuille › Vue d'ensemble › Historique des transactions**.
 2. **Exporter › Générer tous les relevés** : compte **Tous**, crypto **Toutes**, depuis l'ouverture
    (un export par année si la période est limitée).
-3. Le CSV commence par `User_ID,UTC_Time,Account,Operation,Coin,Change,Remark`.
+3. Le CSV commence par `User_ID,UTC_Time,Account,…` (anglais) ou `Identifiant utilisateur,Durée,Compte,…` (français).
+   Il suffit à lui seul : inutile d'importer aussi l'historique des trades Spot.
 
 **Historique des trades Spot** (achats/ventes uniquement) :
 **Ordres › Ordres Spot › Historique des trades › Exporter**. Le CSV commence par
