@@ -75,14 +75,15 @@ def add_operation(db: DB, *, account_id: str, kind: str, d: date, ticker: str | 
                   isin: str | None = None, name: str | None = None, quantity: float | None = None,
                   price: float | None = None, currency: str = "EUR", fees: float = 0.0,
                   amount: float | None = None, note: str = "", fund_with_deposit: bool = False,
-                  online: bool = True, op_id: str | None = None) -> dict:
+                  online: bool = True, op_id: str | None = None, instrument: str | None = None) -> dict:
     """Enregistre une opération. Retourne la ligne insérée (montants en EUR).
 
     * achat/vente : quantité × prix (devise du titre) ± frais, converti en EUR à la date ;
     * dividende/versement/retrait/frais/intérêts : `amount` en devise (positif).
     * fund_with_deposit : ajoute un versement du même montant (l'achat est financé par de l'argent frais).
     """
-    key = instrument_key(ticker, isin) if kind in ("buy", "sell", "dividend", "reward") else None
+    # `instrument` : identifiant d'une ligne déjà connue (choisie dans la liste) — garde la même ligne.
+    key = (instrument or instrument_key(ticker, isin)) if kind in ("buy", "sell", "dividend", "reward") else None
     if key and kind in ("buy", "sell", "reward"):
         register_instrument(db, key, ticker, name, currency, online)
     rate = market.fx_on(db, currency, d, online) or 1.0

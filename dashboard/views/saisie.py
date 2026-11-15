@@ -67,33 +67,86 @@ if choice == "__new__":
     n1, n2 = st.columns([2, 1])
     new_name = n1.text_input("Nom du nouveau compte", placeholder="ex. PEA Fortuneo")
     new_type = n2.selectbox("Type de compte", list(manual.ACCOUNT_TYPES))
-kind_label = c2.selectbox("Type d'opération", list(manual.KINDS))
+kind_label = st.segmented_control("Type d'opération", list(manual.KINDS), default="Achat", key="kind") or "Achat"
 kind = manual.KINDS[kind_label]
 with_title = kind in ("buy", "sell", "dividend", "reward")
 
 # ------------------------------------------------------------- titre
+NEW = "__new__"
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _known_lines(db_path: str, _mtime: float):
+    """Lignes connues : détenues (par compte) + tous les titres déjà vus, avec dernier cours en devise."""
+    from finmon.db import DB as _DB
+
+    d = _DB(db_path)
+    inst = d.read("SELECT isin, ticker, name, currency FROM instruments")
+    last = d.read("SELECT p.symbol AS ticker, p.close AS last FROM prices p "
+                  "JOIN (SELECT symbol, MAX(date) d FROM prices GROUP BY symbol) m ON p.symbol = m.symbol AND p.date = m.d")
+    return inst.merge(last, on="ticker", how="left")
+
+
 info = {}
+instrument = None
+ticker, isin = "", ""
 if with_title:
-    t1, t2, t3 = st.columns([1.2, 1.2, 0.6])
-    ticker = t1.text_input("Ticker Yahoo Finance", placeholder="AAPL, CW8.PA, IWDA.AS, BTC-USD…",
-                           help="Le symbole tel qu'affiché sur finance.yahoo.com. Suffixe de place : .PA Paris, "
-                                ".AS Amsterdam, .DE Xetra, .L Londres, .MI Milan ; crypto : BTC-USD.").strip().upper()
-    isin = t2.text_input("ISIN (facultatif)", placeholder="LU1681043599").strip().upper()
-    t3.write("")
-    t3.write("")
-    if ticker and t3.button("Vérifier", width="stretch") and online:
-        with st.spinner("Recherche…"):
-            st.session_state["lookup"] = market.lookup(ticker)
-    info = st.session_state.get("lookup", {})
-    if info and info.get("ticker") != ticker:
-        info = {}
-    if info:
-        st.success(f"**{info.get('name')}** — dernier cours {info['last']:,.2f} {info.get('currency')}"
-                   .replace(",", " "))
-    elif ticker and online:
-        st.caption("Cliquez sur Vérifier pour contrôler le ticker et récupérer sa devise.")
-else:
-    ticker, isin = "", ""
+    cur = bundle().portfolio.current
+    held = cur[cur["account_id"] == choice][["isin", "qty"]] if not cur.empty and choice != NEW else \
+        pd.DataFrame(columns=["isin", "qty"])
+    held = held.groupby("isin")["qty"].sum()
+    held_any = set(cur["isin"]) if not cur.empty else set()
+    lines = _known_lines(str(db.path), db.path.stat().st_mtime).set_index("isin")
+    # Vente / dividende : les lignes du compte. Achat : celles du compte, puis celles des autres comptes.
+    if kind in ("sell", "dividend"):
+        opts = [i for i in held.index if i in lines.index]
+    else:
+        opts = [i for i in held.index if i in lines.index] + \
+            sorted((i for i in held_any if i in lines.index and i not in held.index),
+                   key=lambda i: str(lines.loc[i, "name"]))
+
+    def _n(x, dec=None):
+        txt = f"{x:,.{dec}f}" if dec is not None else f"{x:,.6g}" if abs(x) >= 1e5 else f"{x:.6g}"
+        return txt.replace(",", " ").replace(".", ",")
+
+    def _label(i):
+        if i == NEW:
+            return "Autre titre (saisir un ticker)…"
+        r = lines.loc[i]
+        q = f" · {_n(held[i])} détenu(s)" if i in held.index else ""
+        return f"{r['name'] or r['ticker']} ({r['ticker'] or i}){q}"
+
+    pick = st.selectbox("Titre", opts + ([NEW] if kind != "sell" or not opts else []), format_func=_label, key=f"line_{choice}_{kind}",
+                        help="Les titres que vous détenez déjà sur ce compte apparaissent en premier.")
+    if pick != NEW:
+        r = lines.loc[pick]
+        instrument, ticker = pick, (r["ticker"] or "")
+        isin = pick if not str(pick).startswith(("CRYPTO-", "TICKER:", "IBKR:")) else ""
+        info = {"ticker": ticker, "name": r["name"], "currency": r["currency"],
+                "last": float(r["last"]) if r["last"] == r["last"] and r["last"] is not None else None}
+        if (r["currency"] or "").upper() in ("GBP", "GBX") and ticker.endswith(".L"):
+            info["currency"] = r["currency"]
+        st.caption(f"Dernier cours connu : {_n(info['last'], 2)} {info['currency']}"
+                   if info.get("last") else "Pas de cours connu pour ce titre.")
+    else:
+        t1, t2, t3 = st.columns([1.2, 1.2, 0.6])
+        ticker = t1.text_input("Ticker Yahoo Finance", placeholder="AAPL, CW8.PA, IWDA.AS, BTC-USD…",
+                               help="Le symbole tel qu'affiché sur finance.yahoo.com. Suffixe de place : .PA Paris, "
+                                    ".AS Amsterdam, .DE Xetra, .L Londres, .MI Milan ; crypto : BTC-USD.").strip().upper()
+        isin = t2.text_input("ISIN (facultatif)", placeholder="LU1681043599").strip().upper()
+        t3.write("")
+        t3.write("")
+        if ticker and t3.button("Vérifier", width="stretch") and online:
+            with st.spinner("Recherche…"):
+                st.session_state["lookup"] = market.lookup(ticker)
+        info = st.session_state.get("lookup", {})
+        if info and info.get("ticker") != ticker:
+            info = {}
+        if info:
+            st.success(f"**{info.get('name')}** — dernier cours {info['last']:,.2f} {info.get('currency')}"
+                       .replace(",", " "))
+        elif ticker and online:
+            st.caption("Cliquez sur Vérifier pour contrôler le ticker et récupérer sa devise.")
 
 # ------------------------------------------------------------- montants
 d1, d2, d3, d4 = st.columns(4)
@@ -105,7 +158,11 @@ if ccy_default not in ccys:
 currency = d4.selectbox("Devise", ccys, index=ccys.index(ccy_default))
 qty = price = amount = None
 if kind in ("buy", "sell", "reward"):
-    qty = d2.number_input("Quantité", min_value=0.0, step=1.0, format="%.6g")
+    max_q = float(held[instrument]) if kind == "sell" and instrument in held.index else None
+    qty = d2.number_input("Quantité", min_value=0.0, step=1.0, format="%.6g",
+                          help=f"Détenu : {_n(max_q)}" if max_q else None)
+    if kind == "sell" and max_q and qty > max_q + 1e-9:
+        st.warning(f"Vous ne détenez que {_n(max_q)} sur ce compte.")
     if kind != "reward":
         price = d3.number_input(f"Prix unitaire ({currency})", min_value=0.0, step=0.01, format="%.4f",
                                 value=float(info["last"]) if info and info.get("last") else 0.0)
@@ -139,12 +196,13 @@ if st.button("Enregistrer l'opération", type="primary"):
             acc_id = manual.ensure_account(db, new_name.strip(), manual.ACCOUNT_TYPES[new_type])
         else:
             acc_id = choice
-        if with_title and not (ticker or isin):
+        if with_title and not (ticker or isin or instrument):
             raise ValueError("Indiquez un ticker (ou un ISIN).")
         row = manual.add_operation(
             db, account_id=acc_id, kind=kind, d=op_date, ticker=ticker or None, isin=isin or None,
             name=info.get("name") if info else (ticker or None), quantity=qty or None, price=price,
-            currency=currency, fees=fees, amount=amount, note=note, fund_with_deposit=fund, online=online)
+            currency=currency, fees=fees, amount=amount, note=note, fund_with_deposit=fund, online=online,
+            instrument=instrument)
         if online and kind in ("buy", "sell", "reward"):
             market.update_all(db)
             market.live_update(db)
