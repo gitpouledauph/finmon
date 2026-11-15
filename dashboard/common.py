@@ -189,18 +189,50 @@ def operations_dialog(title: str, ops: pd.DataFrame, sign_note: str = "") -> Non
     if ops.empty:
         st.write("Aucune opération.")
         return
-    o = ops.sort_values("amount")
-    k1, k2 = st.columns(2)
-    k1.metric("Total", eur(o["amount"].sum(), 2, sign=True))
+    o = ops.sort_values("amount").copy()
+    if "factor" not in o.columns:
+        o["factor"] = 1.0
+    o["factor"] = o["factor"].fillna(1.0)
+    o["amount_full"] = o.get("amount_full", o["amount"]).fillna(o["amount"])
+    k1, k2, k3 = st.columns(3)
+    k1.metric("Total compté", eur(o["amount"].sum(), 2, sign=True))
     k2.metric("Opérations", len(o))
+    shared = o[o["factor"] < 1]
+    k3.metric("Dépenses partagées", len(shared),
+              f"{eur((shared['amount_full'] - shared['amount']).sum(), 2, sign=True)} non comptés" if len(shared) else None,
+              delta_color="off")
     if o["category"].nunique() > 1:
         by = o.groupby("category")["amount"].agg(["sum", "size"]).sort_values("sum")
         st.dataframe(signed_style(by.rename(columns={"sum": "Montant", "size": "Opérations"}).reset_index()
                                   .rename(columns={"category": "Catégorie"}), ["Montant"])
                      .format({"Montant": "{:+,.2f} €"}), hide_index=True, width="stretch")
-    df = pd.DataFrame({"Date": o["date"].dt.strftime("%d/%m/%Y"), "Marchand": o["merchant"], "Libellé": o["label"],
-                       "Catégorie": o["category"], "Montant": o["amount"]})
-    st.dataframe(signed_style(df, ["Montant"]).format({"Montant": "{:+,.2f} €"}), hide_index=True,
-                 width="stretch", height=420)
+    editable = ~o["id"].astype(str).str.startswith(("loyer-fixe", "exc-"))
+    st.caption("« Ma part » : la fraction de la dépense qui vous revient (50 % pour une note partagée en deux). "
+               "Modifiez-la puis enregistrez : seule cette part est comptée.")
+    df = pd.DataFrame({"id": o["id"], "Date": o["date"].dt.strftime("%d/%m/%Y"), "Marchand": o["merchant"],
+                       "Libellé": o["label"], "Catégorie": o["category"], "Montant": o["amount_full"],
+                       "Ma part (%)": (o["factor"] * 100).round(1), "Compté": o["amount"]})
+    ed = st.data_editor(df, hide_index=True, width="stretch", height=420, key=f"dlg_ed_{title}",
+                        disabled=["id", "Date", "Marchand", "Libellé", "Catégorie", "Montant", "Compté"],
+                        column_config={
+                            "id": None,
+                            "Montant": st.column_config.NumberColumn(format="%+,.2f €"),
+                            "Compté": st.column_config.NumberColumn(format="%+,.2f €"),
+                            "Ma part (%)": st.column_config.NumberColumn(min_value=0.0, max_value=100.0, step=5.0,
+                                                                         format="%.0f %%")})
     if sign_note:
         st.caption(sign_note)
+    if st.button("Enregistrer les parts", type="primary", key=f"dlg_save_{title}"):
+        from finmon.db import set_override
+
+        before = df.set_index("id")["Ma part (%)"]
+        n = 0
+        for r in ed.itertuples(index=False):
+            if r.id in set(o.loc[editable, "id"]) and abs((r[6] or 0) - before[r.id]) > 0.01:
+                set_override(get_db(), r.id, factor=(r[6] or 0) / 100)
+                n += 1
+        if n:
+            invalidate()
+            st.rerun()
+        else:
+            st.info("Aucune part modifiée.")

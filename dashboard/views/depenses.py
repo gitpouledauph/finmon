@@ -86,7 +86,7 @@ from finmon import config as _config  # noqa: E402
 
 cats = sorted(budget.category_types().keys())
 vac_names = [""] + b.vacations["name"].tolist()
-real = t[t["source_cat"] != "loyer fixe"]
+real = t[~t["source_cat"].isin(["loyer fixe", "exceptionnel"])]
 todo = real[real["source_cat"] == "défaut"]
 tab_todo, tab_all = st.tabs([f"À classer ({len(todo)})", "Toutes les opérations"])
 
@@ -130,14 +130,15 @@ with tab_all:
                "l'avance). Cochez « Règle » pour appliquer la catégorie à tout le marchand, y compris aux "
                "prochains imports.")
     q = st.text_input("Rechercher un libellé", "")
-    view = t_sel[t_sel["source_cat"] != "loyer fixe"].sort_values("date", ascending=False)
+    view = t_sel[~t_sel["source_cat"].isin(["loyer fixe", "exceptionnel"])].sort_values("date", ascending=False)
     if q:
         view = view[view["label"].str.contains(q, case=False, regex=False)]
     view = view.head(500)
     ed = st.data_editor(
-        view[["id", "date", "label", "merchant", "amount", "category", "vacation_tag", "source_cat"]].rename(columns={
-            "date": "Date", "label": "Libellé", "merchant": "Marchand", "amount": "Montant", "category": "Catégorie",
-            "vacation_tag": "Vacances", "source_cat": "Origine"}).assign(Règle=False),
+        view.assign(part=(view["factor"].fillna(1.0) * 100).round(1), full=view["amount_full"].fillna(view["amount"]))[
+            ["id", "date", "label", "merchant", "full", "part", "category", "vacation_tag", "source_cat"]].rename(columns={
+            "date": "Date", "label": "Libellé", "merchant": "Marchand", "full": "Montant", "part": "Ma part (%)",
+            "category": "Catégorie", "vacation_tag": "Vacances", "source_cat": "Origine"}).assign(Règle=False),
         hide_index=True, width="stretch", disabled=["id", "Date", "Libellé", "Marchand", "Montant", "Origine"],
         column_config={
             "id": None,
@@ -146,6 +147,10 @@ with tab_all:
                      "marchand, y compris aux prochains imports."),
             "Date": st.column_config.DateColumn(format="DD/MM/YYYY"),
             "Montant": st.column_config.NumberColumn(format="%.2f €"),
+            "Ma part (%)": st.column_config.NumberColumn(
+                min_value=0.0, max_value=100.0, step=5.0, format="%.0f %%",
+                help="Part de la dépense qui vous revient (50 % pour une dépense partagée en deux). "
+                     "Seule cette part est comptée dans le budget."),
             "Catégorie": st.column_config.SelectboxColumn(options=cats, required=True),
             "Vacances": st.column_config.SelectboxColumn(options=vac_names),
         }, key="editor")
@@ -157,9 +162,18 @@ with tab_all:
             cat_changed = r.Catégorie != o["category"]
             vac = r.Vacances if isinstance(r.Vacances, str) and r.Vacances else None
             vac_changed = vac != (o["vacation_tag"] if isinstance(o["vacation_tag"], str) and o["vacation_tag"] else None)
-            if cat_changed or vac_changed:
-                changed.append({"tx_id": r.id, "category": r.Catégorie if (cat_changed or o["source_cat"] == "manuel") else None,
-                                "vacation": vac})
+            part = r[5]
+            old_part = float(o["factor"]) * 100 if o["factor"] == o["factor"] else 100.0
+            part_changed = part is not None and part == part and abs(part - old_part) > 0.01
+            if cat_changed or vac_changed or part_changed:
+                ch = {"tx_id": r.id}
+                if cat_changed:
+                    ch["category"] = r.Catégorie
+                if vac_changed:
+                    ch["vacation"] = vac
+                if part_changed:
+                    ch["factor"] = part / 100
+                changed.append(ch)
         rules = 0
         for r in ed[ed["Règle"]].itertuples(index=False):
             merchant = str(r.Marchand or "").strip()
@@ -168,8 +182,10 @@ with tab_all:
                 _config.add_auto_rule(_re.escape(merchant), r.Catégorie, "debit" if o["amount"] < 0 else "credit")
                 rules += 1
         if changed or rules:
-            if changed:
-                get_db().upsert("category_overrides", pd.DataFrame(changed), mode="replace")
+            from finmon.db import set_override
+
+            for c in changed:
+                set_override(get_db(), c.pop("tx_id"), **{k: v for k, v in c.items() if k != "factor" or v is not None})
             invalidate()
             st.success(f"{len(changed)} correction(s) enregistrée(s)" + (f", {rules} règle(s) créée(s)" if rules else "") + ".")
             st.rerun()

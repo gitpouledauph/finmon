@@ -5,10 +5,10 @@ from datetime import date
 
 import pandas as pd
 
-CASH_TYPES = {"courant", "livret", "autre"}
+CASH_TYPES = {"courant", "livret", "autre", "epargne_salariale"}   # valorisés par des soldes saisis
 BUCKET = {"courant": "Liquidités", "livret": "Épargne réglementée", "autre": "Autres actifs",
           "pea": "Investissements", "cto": "Investissements", "assurance_vie": "Investissements",
-          "crypto": "Investissements"}
+          "crypto": "Investissements", "epargne_salariale": "Investissements"}
 
 
 def cash_balances(accounts: pd.DataFrame, tx: pd.DataFrame, snaps: pd.DataFrame,

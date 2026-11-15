@@ -38,8 +38,9 @@ if g.empty:
     st.stop()
 
 if gran == "Année":
-    view = g.groupby(g.index.year)[["salaire", "loyer", "depenses", "economise", "investi", "livrets"]].sum()
-    view["taux"] = view["economise"] / view["salaire"].where(view["salaire"] > 0)
+    view = g.groupby(g.index.year)[["salaire", "exceptionnel", "loyer", "depenses", "economise", "investi", "livrets"]].sum()
+    rev_y = view["salaire"] + view["exceptionnel"]
+    view["taux"] = view["economise"] / rev_y.where(rev_y > 0)
     view["mois"] = g.groupby(g.index.year).size()
     xs = [str(y) + (f" ({n} mois)" if n < 12 else "") for y, n in zip(view.index, view["mois"])]
 else:
@@ -47,15 +48,17 @@ else:
     xs = list(view.index)
 
 # ------------------------------------------------------------- KPIs
-tot = g[["salaire", "loyer", "depenses", "economise", "investi", "livrets"]].sum()
+tot = g[["salaire", "exceptionnel", "loyer", "depenses", "economise", "investi", "livrets"]].sum()
 n = len(g)
 k = st.columns(5)
-k[0].metric("Salaire moyen / mois", eur(tot["salaire"] / n))
+k[0].metric("Salaire moyen / mois", eur(tot["salaire"] / n),
+            f"+ {eur(tot['exceptionnel'] / n)} exceptionnels" if tot["exceptionnel"] else None, delta_color="off")
 k[1].metric("Loyer moyen / mois", eur(tot["loyer"] / n))
 k[2].metric("Dépenses hors loyer / mois", eur(tot["depenses"] / n))
 k[3].metric("Économisé / mois", eur(tot["economise"] / n, sign=True))
-k[4].metric("Taux d'épargne", f"{tot['economise'] / tot['salaire'] * 100:.0f} %" if tot["salaire"] else "—",
-            help=f"Sur {n} mois complets : économisé / salaire.")
+rev_tot = tot["salaire"] + tot["exceptionnel"]
+k[4].metric("Taux d'épargne", f"{tot['economise'] / rev_tot * 100:.0f} %" if rev_tot else "—",
+            help=f"Sur {n} mois complets : économisé / (salaire + revenus exceptionnels).")
 
 # ------------------------------------------------------------- décomposition du salaire
 st.subheader("Que devient le salaire")
@@ -65,12 +68,12 @@ for col, lab in (("loyer", "Loyer"), ("depenses", "Dépenses hors loyer"), ("eco
     fig.add_trace(go.Bar(x=xs, y=view[col], name=lab, marker_color=COL[lab],
                          marker_line=dict(width=1, color="#0b0d12"),
                          hovertemplate="%{y:,.0f} €<extra>" + lab + "</extra>"))
-fig.add_trace(go.Scatter(x=xs, y=view["salaire"], name="Salaire", mode="lines+markers",
-                         line=dict(color="#e8e9ed", width=2), marker=dict(size=7),
-                         hovertemplate="%{y:,.0f} €<extra>Salaire</extra>"))
+fig.add_trace(go.Scatter(x=xs, y=view["salaire"] + view["exceptionnel"], name="Revenus (salaire + exceptionnels)",
+                         mode="lines+markers", line=dict(color="#e8e9ed", width=2), marker=dict(size=7),
+                         hovertemplate="%{y:,.0f} €<extra>Revenus</extra>"))
 fig.update_layout(barmode="relative", bargap=0.3)
 plot(charts.layout(fig, 380), key="split")
-st.caption("Chaque barre = loyer + dépenses hors loyer + économisé = salaire du mois. "
+st.caption("Chaque barre = loyer + dépenses hors loyer + économisé = revenus du mois (salaire + exceptionnels). "
            "Un « économisé » négatif (sous l'axe) signifie un mois où les dépenses ont dépassé le salaire.")
 
 l, r = st.columns(2)
@@ -80,7 +83,7 @@ with l:
     fig = go.Figure(go.Bar(x=xs, y=rate["Taux d'épargne"],
                            marker_color=[charts.GOOD if v >= 0 else charts.BAD for v in rate["Taux d'épargne"].fillna(0)],
                            hovertemplate="%{y:.0f} %<extra></extra>"))
-    avg = tot["economise"] / tot["salaire"] * 100 if tot["salaire"] else None
+    avg = tot["economise"] / rev_tot * 100 if rev_tot else None
     if avg is not None:
         fig.add_hline(y=avg, line_dash="dot", line_color=charts.MUTED,
                       annotation_text=f"moyenne {avg:.0f} %", annotation_position="top left")
@@ -96,7 +99,7 @@ with r:
 st.subheader("Détail")
 table = pd.DataFrame({
     "Période": [x.strftime("%m/%Y") if isinstance(x, pd.Timestamp) else x for x in xs],
-    "Salaire": view["salaire"].values, "Loyer": view["loyer"].values,
+    "Salaire": view["salaire"].values, "Exceptionnels": view["exceptionnel"].values, "Loyer": view["loyer"].values,
     "Dépenses hors loyer": view["depenses"].values, "Économisé": view["economise"].values,
     "Taux": (view["taux"] * 100).values, "Investi": view["investi"].values, "Livrets (net)": view["livrets"].values,
 })
@@ -105,7 +108,7 @@ st.caption("Cliquez sur une ligne pour voir toutes les dépenses hors loyer de l
 table = table.iloc[::-1].reset_index(drop=True)
 sel_ev = st.dataframe(table, hide_index=True, width="stretch", on_select="rerun", selection_mode="single-row",
                       key=f"glob_sel_{gran}", column_config={
-    "Salaire": money, "Loyer": money, "Dépenses hors loyer": money,
+    "Salaire": money, "Exceptionnels": money, "Loyer": money, "Dépenses hors loyer": money,
     "Économisé": st.column_config.NumberColumn(format="%+,.0f €"),
     "Taux": st.column_config.NumberColumn(format="%.0f %%"),
     "Investi": st.column_config.NumberColumn(format="%+,.0f €"),
@@ -138,3 +141,46 @@ cumul = pd.DataFrame({"Investi cumulé": g["investi"].cumsum(), "Livrets cumulé
 plot(charts.line(cumul, list(cumul.columns), height=300,
                  colors={"Investi cumulé": charts.SERIES[0], "Livrets cumulés (net)": charts.SERIES[3],
                          "Économisé cumulé": charts.GOOD}), key="aside_cum")
+
+# ------------------------------------------------------------- revenus exceptionnels
+st.subheader("Revenus exceptionnels")
+st.caption("Prime, cadeau, remboursement… Seul le salaire est compté automatiquement : ajoutez ici les autres "
+           "revenus que vous voulez prendre en compte. « Réduit les dépenses » : le montant vient en déduction des "
+           "dépenses du mois (ex. un remboursement de voyage) au lieu de s'ajouter aux revenus.")
+from datetime import date as _date  # noqa: E402
+import uuid as _uuid  # noqa: E402
+
+from common import get_db, invalidate  # noqa: E402
+
+db = get_db()
+with st.form("exc_form", clear_on_submit=True):
+    f1, f2, f3, f4 = st.columns([1, 2, 1, 1.3], vertical_alignment="bottom")
+    d = f1.date_input("Date", value=_date.today(), format="DD/MM/YYYY")
+    lab = f2.text_input("Libellé", placeholder="ex. Prime annuelle, remboursement d'impôts…")
+    amt = f3.number_input("Montant (€)", min_value=0.0, step=50.0)
+    off = f4.toggle("Réduit les dépenses", value=False)
+    if st.form_submit_button("Ajouter") and lab and amt > 0:
+        db.upsert("exceptional_income", pd.DataFrame([{"id": _uuid.uuid4().hex[:10], "date": d.isoformat(),
+                                                       "label": lab.strip(), "amount": amt,
+                                                       "offsets_expenses": int(off)}]))
+        invalidate()
+        st.rerun()
+exc = db.read("SELECT * FROM exceptional_income ORDER BY date DESC")
+if exc.empty:
+    st.caption("Aucun revenu exceptionnel saisi.")
+else:
+    shown = pd.DataFrame({"Supprimer": False, "id": exc["id"], "Date": pd.to_datetime(exc["date"]),
+                          "Libellé": exc["label"], "Montant": exc["amount"],
+                          "Réduit les dépenses": exc["offsets_expenses"].astype(bool)})
+    ed = st.data_editor(shown, hide_index=True, width="stretch", key="exc_ed", disabled=["id", "Date", "Libellé"],
+                        column_config={"id": None, "Date": st.column_config.DateColumn(format="DD/MM/YYYY"),
+                                       "Montant": st.column_config.NumberColumn(format="%,.2f €", min_value=0.0)})
+    if st.button("Enregistrer", key="exc_save"):
+        for r in ed.itertuples(index=False):
+            if r.Supprimer:
+                db.execute("DELETE FROM exceptional_income WHERE id = ?", [r.id])
+            else:
+                db.execute("UPDATE exceptional_income SET amount = ?, offsets_expenses = ? WHERE id = ?",
+                           [float(r.Montant), int(bool(r[5])), r.id])
+        invalidate()
+        st.rerun()

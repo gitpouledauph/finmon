@@ -91,6 +91,16 @@ def classify(tx: pd.DataFrame, overrides: pd.DataFrame | None = None,
         df.loc[ocat[has].index, "category"] = ocat[has]
         df.loc[ocat[has].index, "source_cat"] = "manuel"
         df.loc[m, "vacation_tag"] = df.loc[m, "id"].map(ov["vacation"])
+        if "factor" in ov.columns:
+            fac = pd.to_numeric(df.loc[m, "id"].map(ov["factor"]), errors="coerce")
+            fac = fac[fac.notna() & (fac != 1)]
+            df["factor"] = 1.0
+            df.loc[fac.index, "factor"] = fac
+            df["amount_full"] = df["amount"]
+            df.loc[fac.index, "amount"] = df.loc[fac.index, "amount"] * fac
+    if "factor" not in df.columns:
+        df["factor"] = 1.0
+        df["amount_full"] = df["amount"]
     types = category_types()
     df["cat_type"] = df["category"].map(types).fillna("expense")
     df["date"] = pd.to_datetime(df["date"])
@@ -175,7 +185,7 @@ def suggest_vacations(df: pd.DataFrame, known: pd.DataFrame, gap_days: int = 3, 
 # --------------------------------------------------------------------------
 # Virements vers les comptes d'investissement
 # --------------------------------------------------------------------------
-INVEST_TYPES = {"pea", "cto", "crypto", "assurance_vie"}
+INVEST_TYPES = {"pea", "cto", "crypto", "assurance_vie", "epargne_salariale"}
 LINKABLE = {"Virements internes", "Épargne & investissement"}
 
 
@@ -268,18 +278,21 @@ def add_fixed_rent(tx: pd.DataFrame, accounts: pd.DataFrame, until=None) -> pd.D
 # --------------------------------------------------------------------------
 INCOME_MAIN = "Salaire"
 RENT = "Loyer"
+EXC_INCOME = "Revenus exceptionnels"
+EXC_OFFSET = "Revenus exceptionnels (déduits des dépenses)"
 
 
 def global_monthly(df: pd.DataFrame, deduct_refunds: bool = False) -> pd.DataFrame:
     """Par mois : salaire, loyer, autres dépenses, économisé, taux, et où l'épargne est allée.
 
-    - revenus = salaire uniquement (aides, remboursements d'impôt, primes… sont ignorés) ;
+    - revenus = salaire + revenus exceptionnels saisis à la main (le reste des entrées est ignoré) ;
+      un revenu exceptionnel marqué « réduit les dépenses » vient en déduction des dépenses du mois ;
     - dépenses = paiements par carte, prélèvements et retraits d'espèces, hors loyer : aucun virement
       (émis ou reçu) n'est compté. `deduct_refunds` déduit les avoirs / annulations carte ;
     - économisé = salaire − loyer − dépenses ;
     - investi = virements nets vers les courtiers ; livrets = versements − retraits des livrets (net).
     """
-    cols = ["salaire", "loyer", "depenses", "economise", "taux", "investi", "livrets"]
+    cols = ["salaire", "exceptionnel", "loyer", "depenses", "economise", "taux", "investi", "livrets"]
     if df.empty:
         return pd.DataFrame(columns=cols, index=pd.DatetimeIndex([], name="month"), dtype=float)
     sal = df[df["category"] == INCOME_MAIN].groupby("month")["amount"].sum()
@@ -287,10 +300,13 @@ def global_monthly(df: pd.DataFrame, deduct_refunds: bool = False) -> pd.DataFra
     spend = -global_ops(df, "depenses", deduct_refunds).groupby("month")["amount"].sum()
     inv = -df[df["category"] == "Épargne & investissement"].groupby("month")["amount"].sum()
     liv = -df[df["category"] == "Épargne livrets"].groupby("month")["amount"].sum()
-    out = pd.DataFrame({"salaire": sal, "loyer": rent, "depenses": spend, "investi": inv, "livrets": liv}).fillna(0.0)
+    exc = df[df["category"] == EXC_INCOME].groupby("month")["amount"].sum()
+    out = pd.DataFrame({"salaire": sal, "exceptionnel": exc, "loyer": rent, "depenses": spend,
+                        "investi": inv, "livrets": liv}).fillna(0.0)
     out = out.sort_index()
-    out["economise"] = out["salaire"] - out["loyer"] - out["depenses"]
-    out["taux"] = np.where(out["salaire"] > 0, out["economise"] / out["salaire"], np.nan)
+    out["economise"] = out["salaire"] + out["exceptionnel"] - out["loyer"] - out["depenses"]
+    rev = out["salaire"] + out["exceptionnel"]
+    out["taux"] = np.where(rev > 0, out["economise"] / rev, np.nan)
     out.index.name = "month"
     return out[cols]
 
@@ -311,9 +327,32 @@ def global_ops(df: pd.DataFrame, part: str, deduct_refunds: bool = False) -> pd.
         card = lab.str.match(r"^(CARTE\s|PRLV\b|PRELEVEMENT|RETRAIT\s|RET\s?DAB)") & (df["amount"] < 0)
         refund = lab.str.match(r"^(AVOIR|ANNUL(ATION)? CARTE)\b") & (df["amount"] > 0)
         keep = card | (refund if deduct_refunds else False)
-        return df[keep & (df["cat_type"] == "expense") & (df["category"] != RENT)]
+        offset = df["category"] == EXC_OFFSET          # revenus exceptionnels qui réduisent les dépenses
+        return df[(keep & (df["cat_type"] == "expense") & (df["category"] != RENT)) | offset]
+    if part == "exceptionnel":
+        return df[df["category"] == EXC_INCOME]
     if part == "investi":
         return df[df["category"] == "Épargne & investissement"]
     if part == "livrets":
         return df[df["category"] == "Épargne livrets"]
     raise ValueError(part)
+
+
+def add_exceptional(tx: pd.DataFrame, exc: pd.DataFrame, accounts: pd.DataFrame) -> pd.DataFrame:
+    """Ajoute les revenus exceptionnels saisis à la main (table exceptional_income)."""
+    if exc is None or exc.empty or tx.empty:
+        return tx
+    courant = accounts.loc[accounts["type"] == "courant", "id"]
+    acc = (tx[tx["account_id"].isin(courant)]["account_id"].mode().iloc[0]
+           if tx["account_id"].isin(courant).any() else tx["account_id"].iloc[0])
+    d = pd.to_datetime(exc["date"])
+    off = exc["offsets_expenses"].astype(bool)
+    rows = pd.DataFrame({
+        "id": "exc-" + exc["id"].astype(str), "account_id": acc, "date": d, "value_date": d,
+        "label": exc["label"], "merchant": exc["label"].str.upper(), "amount": exc["amount"].abs(),
+        "source": "exceptionnel", "category": np.where(off, EXC_OFFSET, EXC_INCOME),
+        "source_cat": "exceptionnel", "cat_type": np.where(off, "expense", "income"),
+        "month": d.dt.to_period("M").dt.to_timestamp(), "year": d.dt.year, "factor": 1.0,
+        "amount_full": exc["amount"].abs(),
+    })
+    return pd.concat([tx, rows[[c for c in rows.columns if c in tx.columns]]], ignore_index=True)

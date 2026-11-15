@@ -6,7 +6,7 @@ import json
 import pandas as pd
 
 ENVELOPE = {"courant": "Comptes courants", "livret": "Livrets", "pea": "PEA", "cto": "Compte-titres",
-            "assurance_vie": "Assurance vie", "crypto": "Crypto", "autre": "Autres"}
+            "assurance_vie": "Assurance vie", "crypto": "Crypto", "epargne_salariale": "Épargne salariale", "autre": "Autres"}
 
 
 def _explode(current: pd.DataFrame, col: str, label: str) -> pd.DataFrame:
@@ -36,8 +36,11 @@ def allocation(current: pd.DataFrame, cash_now: pd.DataFrame, accounts: pd.DataF
         if cash_now is not None and not cash_now.empty:
             for r in cash_now.itertuples():
                 t = acc_type.get(r.account_id, "courant")
-                cash_rows.append({"account_id": r.account_id, "name": "Livrets" if t == "livret" else "Comptes courants",
-                                  "value": r.balance, "asset_class": "Épargne réglementée" if t == "livret" else "Liquidités",
+                name, cls = {"livret": ("Livrets", "Épargne réglementée"),
+                             "epargne_salariale": ("Épargne salariale", "Épargne salariale")}.get(
+                    t, ("Comptes courants", "Liquidités"))
+                cash_rows.append({"account_id": r.account_id, "name": name,
+                                  "value": r.balance, "asset_class": cls,
                                   "exposure": '{"EUR": 1}', "regions": '{"Europe": 1}', "sectors": "{}"})
         if invest_cash is not None and not invest_cash.empty:
             for r in invest_cash.itertuples():

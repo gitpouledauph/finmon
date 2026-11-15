@@ -15,8 +15,43 @@ online = profile_name() != "demo"
 accounts = db.table("accounts")
 inv = accounts[accounts["type"].isin(["pea", "cto", "crypto", "assurance_vie"])]
 
-mode = st.segmented_control("Saisie", ["Une opération", "Un relevé de positions"], default="Une opération",
-                            label_visibility="collapsed") or "Une opération"
+mode = st.segmented_control("Saisie", ["Une opération", "Un relevé de positions", "La valeur d'un compte"],
+                            default="Une opération", label_visibility="collapsed") or "Une opération"
+
+if mode == "La valeur d'un compte":
+    st.markdown("Pour un compte qu'on suit par sa **valeur totale** plutôt que ligne par ligne : épargne "
+                "salariale (PEE, PERCO), assurance vie en fonds euros… Chaque saisie ajoute un point ; la valeur "
+                "est conservée jusqu'à la saisie suivante.")
+    valued = accounts[accounts["type"].isin(["epargne_salariale", "livret", "autre"])]
+    lab_v = {r.id: r.name for r in valued.itertuples()}
+    v1, v2, v3 = st.columns([2, 1, 1])
+    acc_v = v1.selectbox("Compte", list(lab_v) + ["__new__"],
+                         format_func=lambda k: "Nouveau compte…" if k == "__new__" else lab_v[k])
+    if acc_v == "__new__":
+        n1, n2 = st.columns([2, 1])
+        nv = n1.text_input("Nom du compte", placeholder="ex. PEE Amundi")
+        tv = n2.selectbox("Type", ["Épargne salariale", "Livret", "Autre"])
+    val = v2.number_input("Valeur (€)", min_value=0.0, step=100.0)
+    dv = v3.date_input("Au", value=date.today(), max_value=date.today(), format="DD/MM/YYYY")
+    if st.button("Enregistrer la valeur", type="primary"):
+        if acc_v == "__new__":
+            if not nv.strip():
+                st.error("Donnez un nom au compte.")
+                st.stop()
+            acc_v = "manuel:" + manual.slug(nv)
+            db.upsert("accounts", pd.DataFrame([{"id": acc_v, "institution": "Saisie manuelle", "name": nv.strip(),
+                                                 "type": {"Épargne salariale": "epargne_salariale", "Livret": "livret"}
+                                                 .get(tv, "autre"), "currency": "EUR"}]), mode="ignore")
+        db.upsert("balance_snapshots", pd.DataFrame([{"account_id": acc_v, "date": dv.isoformat(), "balance": val,
+                                                      "source": "manuel"}]), mode="replace")
+        invalidate()
+        st.success(f"Valeur de {eur(val)} enregistrée au {dv:%d/%m/%Y}.")
+    hist_v = db.read("SELECT b.date, a.name, b.balance FROM balance_snapshots b JOIN accounts a ON a.id = b.account_id "
+                     "WHERE b.source = 'manuel' ORDER BY b.date DESC LIMIT 30")
+    if not hist_v.empty:
+        st.dataframe(hist_v.rename(columns={"date": "Date", "name": "Compte", "balance": "Valeur"}), hide_index=True,
+                     width="stretch", column_config={"Valeur": st.column_config.NumberColumn(format="%,.2f €")})
+    st.stop()
 
 if mode == "Un relevé de positions":
     st.markdown("Indiquez **tout ce que contient le compte** aujourd'hui (ce que vous voyez dans l'application). "

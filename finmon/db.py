@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     id TEXT PRIMARY KEY,
     institution TEXT NOT NULL,
     name TEXT NOT NULL,
-    type TEXT NOT NULL,          -- courant | livret | pea | cto | assurance_vie | autre
+    type TEXT NOT NULL,          -- courant | livret | pea | cto | assurance_vie | crypto | epargne_salariale | autre
     currency TEXT NOT NULL DEFAULT 'EUR',
     rate REAL                    -- taux annuel en % (livrets), facultatif
 );
@@ -114,6 +114,14 @@ CREATE TABLE IF NOT EXISTS vacations (
     note TEXT
 );
 
+CREATE TABLE IF NOT EXISTS exceptional_income (
+    id TEXT PRIMARY KEY,
+    date TEXT NOT NULL,
+    label TEXT NOT NULL,
+    amount REAL NOT NULL,          -- positif, en EUR
+    offsets_expenses INTEGER NOT NULL DEFAULT 0   -- 1 : réduit les dépenses du mois ; 0 : revenu en plus
+);
+
 CREATE TABLE IF NOT EXISTS import_log (
     ts TEXT NOT NULL,
     source TEXT NOT NULL,
@@ -135,6 +143,10 @@ class DB:
             cols = {r[1] for r in con.execute("PRAGMA table_info(accounts)")}
             if "rate" not in cols:
                 con.execute("ALTER TABLE accounts ADD COLUMN rate REAL")
+            ov = {r[1] for r in con.execute("PRAGMA table_info(category_overrides)")}
+            if ov and "factor" not in ov:
+                # Part d'une dépense attribuée à soi (ex. 0,5 pour une dépense partagée en deux).
+                con.execute("ALTER TABLE category_overrides ADD COLUMN factor REAL")
 
     @contextmanager
     def connect(self):
@@ -194,3 +206,16 @@ def _py(v):
     if isinstance(v, pd.Timestamp):
         return v.strftime("%Y-%m-%d")
     return v
+
+
+def set_override(db: "DB", tx_id: str, **fields) -> None:
+    """Met à jour une correction d'opération champ par champ (category, vacation, factor)
+    sans effacer les autres champs déjà corrigés."""
+    allowed = {k: v for k, v in fields.items() if k in ("category", "vacation", "factor")}
+    if not allowed:
+        return
+    cols = ", ".join(["tx_id", *allowed])
+    marks = ", ".join("?" * (len(allowed) + 1))
+    upd = ", ".join(f"{k} = excluded.{k}" for k in allowed)
+    db.execute(f"INSERT INTO category_overrides ({cols}) VALUES ({marks}) "
+               f"ON CONFLICT(tx_id) DO UPDATE SET {upd}", [tx_id, *[_py(v) for v in allowed.values()]])

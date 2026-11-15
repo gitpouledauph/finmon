@@ -31,6 +31,8 @@ categories:
   Autres revenus: {type: income}
   Remboursements entre amis: {type: expense}   # Lydia, virements entre amis : se compensent
   Aide familiale: {type: income}
+  Revenus exceptionnels: {type: income}                          # saisis à la main (Vue globale)
+  Revenus exceptionnels (déduits des dépenses): {type: expense}  # idem, viennent en déduction des dépenses
   Virements internes: {type: transfer}
   Épargne livrets: {type: transfer}             # vers / depuis les livrets : épargne nette
   Épargne & investissement: {type: transfer}    # vers les courtiers (rapprochés automatiquement)

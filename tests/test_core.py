@@ -312,3 +312,27 @@ def test_simulation_projection():
     assert p["central"] == pytest.approx(1000 * 1.1 ** 10)
     q = sim.project(1000.0, 0.10, 0.2, 10, monthly=100)
     assert q["low"] < q["central"] < q["high"] and q["invested"] == 1000 + 100 * 120
+
+
+def test_share_factor_and_exceptional_income(tmp_path):
+    from finmon.analytics import budget
+    from finmon.db import set_override
+
+    db = DB(tmp_path / "t.db")
+    df = read_csv_auto(FIX / "boursorama_export_operations_fr.csv")
+    boursorama.import_operations(db, df, source="ops.csv")
+    tx = db.read("SELECT * FROM cash_transactions")
+    suit = tx.loc[tx["label"].str.contains("LIBRAIRIE CENTRALE"), "id"].iloc[0]
+    set_override(db, suit, category="Shopping")
+    set_override(db, suit, factor=0.5)                       # ne doit pas effacer la catégorie
+    ov = db.read("SELECT * FROM category_overrides").set_index("tx_id")
+    assert ov.loc[suit, "category"] == "Shopping" and ov.loc[suit, "factor"] == 0.5
+    accounts = db.read("SELECT * FROM accounts")
+    cl = budget.classify(tx, db.table("category_overrides"), dict(zip(accounts["id"], accounts["type"])))
+    assert cl.set_index("id").loc[suit, "amount"] == pytest.approx(-261.0)
+    exc = pd.DataFrame([{"id": "a", "date": "2026-02-10", "label": "Prime", "amount": 1000.0, "offsets_expenses": 0},
+                        {"id": "b", "date": "2026-02-11", "label": "Remb. voyage", "amount": 100.0, "offsets_expenses": 1}])
+    cl = budget.add_exceptional(cl, exc, accounts)
+    g = budget.global_monthly(cl).loc["2026-02-01"]
+    assert g["exceptionnel"] == 1000
+    assert g["depenses"] == pytest.approx(4.29 + 261.0 - 100.0)   # carte (part 50 %) − remboursement déduit

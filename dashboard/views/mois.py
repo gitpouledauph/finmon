@@ -42,14 +42,16 @@ fa = g12.mean() if not g12.empty else pd.Series(0.0, index=g.columns)
 
 # ------------------------------------------------------------- KPIs
 k = st.columns(4)
-k[0].metric("Salaire", eur(f["salaire"]), f"{eur(f['salaire'] - fa['salaire'], sign=True)} vs moy. 12 mois",
-            help="Seul le salaire compte comme revenu (aides, remboursements d'impôt, primes… sont ignorés).")
+k[0].metric("Salaire", eur(f["salaire"]),
+            (f"+ {eur(f['exceptionnel'])} exceptionnels" if f["exceptionnel"] else
+             f"{eur(f['salaire'] - fa['salaire'], sign=True)} vs moy. 12 mois"), delta_color="off" if f["exceptionnel"] else "normal",
+            help="Salaire, plus les revenus exceptionnels saisis dans Vue globale. Les autres entrées sont ignorées.")
 k[1].metric("Loyer", eur(f["loyer"]), help="Votre part fixe (colocation).")
 k[2].metric("Dépenses hors loyer", eur(f["depenses"]),
             f"{eur(f['depenses'] - fa['depenses'], sign=True)} vs moy. 12 mois", delta_color="inverse")
 k[3].metric("Économisé ce mois", eur(f["economise"], sign=True),
             f"{f['taux'] * 100:.0f} % du salaire" if f["taux"] == f["taux"] else None, delta_color="off",
-            help="Salaire − loyer − dépenses hors loyer.")
+            help="Salaire + revenus exceptionnels − loyer − dépenses hors loyer.")
 NOTE = {"depenses": "Paiements par carte, prélèvements et retraits d'espèces du mois, hors loyer : aucun "
                     "virement (émis ou reçu)"
                     + (" ; avoirs carte déduits." if refunds else "."),
