@@ -2,7 +2,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from common import bundle, download_df, empty_state, eur, pct, period_picker, period_start, plot, show_warnings
+from common import bundle, closed_trades_dialog, detail_button, download_df, empty_state, eur, pct, period_picker, period_start, plot, show_warnings
 from finmon import charts
 from finmon.analytics import portfolio
 
@@ -32,6 +32,8 @@ c[3].metric("TWR / TRI", pct(s["twr"]), f"TRI {pct(s['xirr'])} /an" if s["xirr"]
 c = st.columns(4)
 c[0].metric("Plus-value latente", eur(s["latent"], sign=True), pct(s["latent"] / s["cost"]) if s["cost"] else None)
 c[1].metric("Plus-value réalisée", eur(s["realized"], sign=True))
+if detail_button(c[1], "rz_dialog", "Voir les ventes clôturées") and not pf.closed.empty:
+    closed_trades_dialog(pf.closed[pf.closed["account_id"].isin(sel)], names)
 c[2].metric("Dividendes + intérêts", eur(s["dividends"] + s["interest"]))
 c[3].metric("Frais et impôts", eur(s["fees"]),
             help="Frais de courtage et impôts prélevés (inclus dans le prix de revient / déduits des dividendes).")

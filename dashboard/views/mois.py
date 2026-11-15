@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from common import bundle, empty_state, eur, plot
+from common import bundle, detail_button, empty_state, eur, operations_dialog, plot
 from finmon import charts
 from finmon.analytics import budget
 
@@ -50,6 +50,12 @@ k[2].metric("Dépenses hors loyer", eur(f["depenses"]),
 k[3].metric("Économisé ce mois", eur(f["economise"], sign=True),
             f"{f['taux'] * 100:.0f} % du salaire" if f["taux"] == f["taux"] else None, delta_color="off",
             help="Salaire − loyer − dépenses hors loyer.")
+NOTE = {"depenses": "Sorties d'argent du mois (compte courant + carte) dans les catégories de dépense, hors loyer"
+                    + (" ; remboursements reçus déduits." if refunds else " ; les entrées d'argent ne sont pas déduites."),
+        "salaire": "Virements de salaire reçus dans le mois.", "loyer": "Votre part fixe, comptée le 1er du mois."}
+for col, part, lab in ((k[0], "salaire", "Salaire"), (k[1], "loyer", "Loyer"), (k[2], "depenses", "Dépenses hors loyer")):
+    if detail_button(col, f"dlg_{part}"):
+        operations_dialog(f"{lab} — {charts.mois(m)}", budget.global_ops(cur, part, refunds), NOTE[part])
 
 # ------------------------------------------------------------- où va l'argent
 st.subheader("Ce qui a été mis de côté")
@@ -59,6 +65,9 @@ j[0].metric("Investi (courtiers)", eur(f["investi"], sign=True),
 j[1].metric("Livrets (net)", eur(f["livrets"], sign=True),
             "versé" if f["livrets"] >= 0 else "retiré des livrets", delta_color="off",
             help="Versements vers les livrets moins retraits des livrets dans le mois : les allers-retours s'annulent.")
+for col, part, lab in ((j[0], "investi", "Investi (courtiers)"), (j[1], "livrets", "Livrets (net)")):
+    if detail_button(col, f"dlg_{part}"):
+        operations_dialog(f"{lab} — {charts.mois(m)}", budget.global_ops(cur, part, refunds))
 j[2].metric("Reste sur le compte courant", eur(f["economise"] - f["investi"] - f["livrets"], sign=True),
             help="Économisé − investi − livrets. Négatif : le mois a puisé dans le solde du compte.")
 

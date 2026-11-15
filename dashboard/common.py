@@ -139,3 +139,68 @@ def plot(fig, key: str | None = None):
 def download_df(df: pd.DataFrame, name: str, label: str = "Exporter (CSV)"):
     st.download_button(label, df.to_csv(index=True, sep=";", decimal=",").encode("utf-8-sig"),
                        file_name=f"{name}.csv", mime="text/csv", key=f"dl-{name}")
+
+
+# ------------------------------------------------------------------ détails cliquables
+GOOD_TXT, BAD_TXT = "#3ccf7a", "#f0625d"
+
+
+def signed_style(df: pd.DataFrame, cols: list[str]):
+    """Montants en vert (positif) ou rouge (négatif)."""
+    def color(v):
+        if v is None or v != v:
+            return ""
+        return f"color: {GOOD_TXT if v > 0 else BAD_TXT if v < 0 else 'inherit'}"
+    return df.style.map(color, subset=[c for c in cols if c in df.columns])
+
+
+def detail_button(col, key: str, label: str = "Voir le détail") -> bool:
+    return col.button(label, key=key, type="tertiary", icon=":material/open_in_new:")
+
+
+@st.dialog("Plus-values réalisées : ventes clôturées", width="large")
+def closed_trades_dialog(closed: pd.DataFrame, names: dict) -> None:
+    if closed.empty:
+        st.write("Aucune vente.")
+        return
+    c = closed.sort_values("date", ascending=False)
+    fees = c[c["fee_only"]]
+    t = c[~c["fee_only"]]
+    k1, k2, k3 = st.columns(3)
+    k1.metric("Total réalisé", eur(c["realized"].sum(), sign=True))
+    k2.metric("Ventes gagnantes", f"{(t['realized'] > 0).sum()} · {eur(t.loc[t['realized'] > 0, 'realized'].sum(), sign=True)}")
+    k3.metric("Ventes perdantes", f"{(t['realized'] < 0).sum()} · {eur(t.loc[t['realized'] < 0, 'realized'].sum(), sign=True)}")
+    df = pd.DataFrame({
+        "Date": t["date"].dt.strftime("%d/%m/%Y"), "Titre": t["name"], "Compte": t["account_id"].map(names),
+        "Type": t["type"], "Quantité": t["quantity"], "PRU": t["pru"], "Prix de revient": t["cost"],
+        "Produit": t["proceeds"], "Plus-value": t["realized"],
+        "Perf.": (t["realized"] / t["cost"] * 100).where(t["cost"] > 0)})
+    st.dataframe(signed_style(df, ["Plus-value", "Perf."]).format({
+        "Quantité": "{:.6g}", "PRU": "{:,.2f} €", "Prix de revient": "{:,.2f} €", "Produit": "{:,.2f} €",
+        "Plus-value": "{:+,.2f} €", "Perf.": "{:+.1f} %"}, na_rep="—"), hide_index=True, width="stretch", height=480)
+    if len(fees):
+        st.caption(f"Non listés : {len(fees)} frais prélevés en crypto (quantité perdue sans produit), "
+                   f"{eur(fees['realized'].sum(), sign=True)} au total.")
+
+
+@st.dialog("Détail des opérations", width="large")
+def operations_dialog(title: str, ops: pd.DataFrame, sign_note: str = "") -> None:
+    st.markdown(f"**{title}**")
+    if ops.empty:
+        st.write("Aucune opération.")
+        return
+    o = ops.sort_values("amount")
+    k1, k2 = st.columns(2)
+    k1.metric("Total", eur(o["amount"].sum(), 2, sign=True))
+    k2.metric("Opérations", len(o))
+    if o["category"].nunique() > 1:
+        by = o.groupby("category")["amount"].agg(["sum", "size"]).sort_values("sum")
+        st.dataframe(signed_style(by.rename(columns={"sum": "Montant", "size": "Opérations"}).reset_index()
+                                  .rename(columns={"category": "Catégorie"}), ["Montant"])
+                     .format({"Montant": "{:+,.2f} €"}), hide_index=True, width="stretch")
+    df = pd.DataFrame({"Date": o["date"].dt.strftime("%d/%m/%Y"), "Marchand": o["merchant"], "Libellé": o["label"],
+                       "Catégorie": o["category"], "Montant": o["amount"]})
+    st.dataframe(signed_style(df, ["Montant"]).format({"Montant": "{:+,.2f} €"}), hide_index=True,
+                 width="stretch", height=420)
+    if sign_note:
+        st.caption(sign_note)

@@ -296,3 +296,23 @@ def global_monthly(df: pd.DataFrame, deduct_refunds: bool = False) -> pd.DataFra
     out["taux"] = np.where(out["salaire"] > 0, out["economise"] / out["salaire"], np.nan)
     out.index.name = "month"
     return out[cols]
+
+
+def global_ops(df: pd.DataFrame, part: str, deduct_refunds: bool = False) -> pd.DataFrame:
+    """Les opérations exactes derrière un chiffre de `global_monthly` (mêmes filtres).
+
+    part : salaire | loyer | depenses | investi | livrets."""
+    if df.empty:
+        return df
+    if part == "salaire":
+        return df[df["category"] == INCOME_MAIN]
+    if part == "loyer":
+        return df[df["category"] == RENT]
+    if part == "depenses":
+        e = df[(df["cat_type"] == "expense") & (df["category"] != RENT)]
+        return e if deduct_refunds else e[e["amount"] < 0]
+    if part == "investi":
+        return df[df["category"] == "Épargne & investissement"]
+    if part == "livrets":
+        return df[df["category"] == "Épargne livrets"]
+    raise ValueError(part)

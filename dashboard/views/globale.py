@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from common import bundle, empty_state, eur, plot
+from common import bundle, empty_state, eur, operations_dialog, plot
 from finmon import charts
 from finmon.analytics import budget
 
@@ -101,12 +101,27 @@ table = pd.DataFrame({
     "Taux": (view["taux"] * 100).values, "Investi": view["investi"].values, "Livrets (net)": view["livrets"].values,
 })
 money = st.column_config.NumberColumn(format="%,.0f €")
-st.dataframe(table.iloc[::-1], hide_index=True, width="stretch", column_config={
+st.caption("Cliquez sur une ligne pour voir toutes les dépenses hors loyer de la période.")
+table = table.iloc[::-1].reset_index(drop=True)
+sel_ev = st.dataframe(table, hide_index=True, width="stretch", on_select="rerun", selection_mode="single-row",
+                      key=f"glob_sel_{gran}", column_config={
     "Salaire": money, "Loyer": money, "Dépenses hors loyer": money,
     "Économisé": st.column_config.NumberColumn(format="%+,.0f €"),
     "Taux": st.column_config.NumberColumn(format="%.0f %%"),
     "Investi": st.column_config.NumberColumn(format="%+,.0f €"),
     "Livrets (net)": st.column_config.NumberColumn(format="%+,.0f €")})
+if sel_ev.selection.rows:
+    i = sel_ev.selection.rows[0]
+    per = list(view.index)[::-1][i]
+    if gran == "Année":
+        part_tx, title = tx[tx["month"].dt.year == per], f"Dépenses hors loyer — {per}"
+    else:
+        part_tx, title = tx[tx["month"] == per], f"Dépenses hors loyer — {charts.mois(per)}"
+    if st.session_state.get("_glob_last") != (gran, i):
+        st.session_state["_glob_last"] = (gran, i)
+        operations_dialog(title, budget.global_ops(part_tx, "depenses", refunds))
+    elif st.button("Rouvrir le détail", type="tertiary", icon=":material/open_in_new:"):
+        operations_dialog(title, budget.global_ops(part_tx, "depenses", refunds))
 
 # ------------------------------------------------------------- mis de côté
 st.subheader("Où est allé l'argent mis de côté")
