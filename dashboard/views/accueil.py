@@ -115,6 +115,43 @@ if ev2.selection.rows:
             st.caption(f"Taux {rate[a_id]:.2f} % par an · intérêts estimés sur 12 mois : "
                        f"{eur(row['value'] * rate[a_id] / 100)}".replace(".", ","))
 
+# ------------------------------------------------------------- valeurs saisies à la main
+manual_acc = b.accounts[b.accounts["type"].isin(["epargne_salariale", "livret", "autre"])
+                        & b.accounts["id"].str.startswith("manuel:")]
+if not manual_acc.empty:
+    missing = not set(manual_acc["id"]) <= set(b.balance_snapshots["account_id"])
+    with st.expander("Mettre à jour une valeur saisie à la main (épargne salariale, livrets…)", expanded=missing):
+        bs = b.balance_snapshots.sort_values("date").groupby("account_id").tail(1).set_index("account_id")
+        from datetime import date as _date
+
+        rows = pd.DataFrame({"id": manual_acc["id"], "Compte": manual_acc["name"],
+                             "Valeur actuelle": manual_acc["id"].map(bs["balance"]),
+                             "Au": pd.to_datetime(manual_acc["id"].map(bs["date"])),
+                             "Nouvelle valeur": manual_acc["id"].map(bs["balance"]).astype(float),
+                             "Date": pd.Timestamp(_date.today())})
+        ed_v = st.data_editor(rows, hide_index=True, width="stretch", key="manual_values",
+                              disabled=["id", "Compte", "Valeur actuelle", "Au"],
+                              column_config={"id": None,
+                                             "Valeur actuelle": st.column_config.NumberColumn(format="%,.2f €"),
+                                             "Au": st.column_config.DateColumn(format="DD/MM/YYYY"),
+                                             "Nouvelle valeur": st.column_config.NumberColumn(format="%,.2f €", min_value=0.0),
+                                             "Date": st.column_config.DateColumn(format="DD/MM/YYYY")})
+        if st.button("Enregistrer les valeurs", type="primary", key="save_manual_values"):
+            n = 0
+            for r in ed_v.itertuples(index=False):
+                new_v, old_v = r[4], r[2]
+                if new_v is not None and new_v == new_v and (old_v != old_v or abs(new_v - old_v) > 0.005):
+                    get_db().upsert("balance_snapshots", pd.DataFrame([{
+                        "account_id": r.id, "date": pd.Timestamp(r.Date).date().isoformat(), "balance": float(new_v),
+                        "source": "manuel"}]), mode="replace")
+                    n += 1
+            if n:
+                from common import invalidate
+
+                invalidate()
+                st.rerun()
+            st.info("Aucune valeur modifiée.")
+
 # ------------------------------------------------------------- performance & budget
 st.subheader("Indicateurs")
 flows = budget.monthly_flows(b.tx)
