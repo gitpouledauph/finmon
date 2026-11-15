@@ -21,8 +21,8 @@ gran = c1.segmented_control("Vue", ["Mois", "Année"], default="Mois") or "Mois"
 span = c2.segmented_control("Période", ["Depuis le 1er salaire", "12 mois", "24 mois"],
                             default="Depuis le 1er salaire") or "Depuis le 1er salaire"
 refunds = c3.toggle("Déduire les avoirs carte (remboursements de marchands)", value=False,
-                    help="Revenu = salaire. Dépenses = paiements par carte uniquement (aucun virement, prélèvement ni "
-                         "retrait). Loyer = votre part fixe. Activé : les avoirs carte sont déduits.")
+                    help="Revenu = salaire. Dépenses = paiements par carte, prélèvements et retraits d'espèces "
+                         "(aucun virement). Loyer = votre part fixe. Activé : les avoirs carte sont déduits.")
 
 g = budget.global_monthly(tx, deduct_refunds=refunds)
 last_data = tx["date"].max()

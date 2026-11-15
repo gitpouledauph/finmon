@@ -274,8 +274,8 @@ def global_monthly(df: pd.DataFrame, deduct_refunds: bool = False) -> pd.DataFra
     """Par mois : salaire, loyer, autres dépenses, économisé, taux, et où l'épargne est allée.
 
     - revenus = salaire uniquement (aides, remboursements d'impôt, primes… sont ignorés) ;
-    - dépenses = paiements par CARTE uniquement (libellé « CARTE … »), hors loyer : aucun virement,
-      prélèvement ni retrait n'est compté. `deduct_refunds` déduit les avoirs / annulations carte ;
+    - dépenses = paiements par carte, prélèvements et retraits d'espèces, hors loyer : aucun virement
+      (émis ou reçu) n'est compté. `deduct_refunds` déduit les avoirs / annulations carte ;
     - économisé = salaire − loyer − dépenses ;
     - investi = virements nets vers les courtiers ; livrets = versements − retraits des livrets (net).
     """
@@ -307,7 +307,8 @@ def global_ops(df: pd.DataFrame, part: str, deduct_refunds: bool = False) -> pd.
         return df[df["category"] == RENT]
     if part == "depenses":
         lab = df["label"].fillna("").str.upper().str.strip()
-        card = lab.str.match(r"^CARTE\s") & (df["amount"] < 0)
+        # Carte bancaire, prélèvements (Navigo, abonnements…) et retraits d'espèces ; jamais de virement.
+        card = lab.str.match(r"^(CARTE\s|PRLV\b|PRELEVEMENT|RETRAIT\s|RET\s?DAB)") & (df["amount"] < 0)
         refund = lab.str.match(r"^(AVOIR|ANNUL(ATION)? CARTE)\b") & (df["amount"] > 0)
         keep = card | (refund if deduct_refunds else False)
         return df[keep & (df["cat_type"] == "expense") & (df["category"] != RENT)]
