@@ -133,6 +133,7 @@ def _categories(perso_path: str, _mtime: tuple) -> dict:
     out["rules"] = list(perso.get("rules") or []) + list(base.get("rules") or [])   # règles perso d'abord
     out["bank_mapping"] = {**(base.get("bank_mapping") or {}), **(perso.get("bank_mapping") or {})}
     out["owner_names"] = perso.get("owner_names") or []
+    out["loyer_fixe"] = perso.get("loyer_fixe") or []
     return out
 
 

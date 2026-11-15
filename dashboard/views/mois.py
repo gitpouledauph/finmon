@@ -87,23 +87,34 @@ with right:
         plot(charts.signed_hbar(d.index, d.values), key="delta_cat")
 
 # ------------------------------------------------------------- logement
-logt = cur[cur["category"] == "Logement"]
-if not logt.empty:
+coloc = cur[cur["category"] == "Loyer & colocation (hors budget)"]
+mine = -cur.loc[cur["category"] == "Logement", "amount"].sum()
+if not coloc.empty or mine:
     st.subheader("Logement")
-    paid = -logt.loc[logt["amount"] < 0, "amount"].sum()
-    got = logt.loc[logt["amount"] > 0, "amount"].sum()
-    lg12 = prev12[prev12["category"] == "Logement"]
+    paid = -coloc.loc[coloc["amount"] < 0, "amount"].sum()
+    got = coloc.loc[coloc["amount"] > 0, "amount"].sum()
     l1, l2, l3, l4 = st.columns(4)
-    l1.metric("Loyer et charges payés", eur(paid))
-    l2.metric("Parts reçues (colocataires)", eur(got))
-    l3.metric("Coût net du logement", eur(paid - got))
-    l4.metric("Coût net moyen (12 mois)", eur(-lg12["amount"].sum() / n_prev),
-              help="Les parts des colocataires arrivent parfois groupées sur deux mois : la moyenne lisse ces décalages.")
-    st.caption("Les virements passés à partir du 25 sont comptés sur le mois suivant (le mois qu'ils couvrent).")
-    st.dataframe(logt.sort_values("date")[["date", "label", "amount"]].rename(
-        columns={"date": "Date", "label": "Libellé", "amount": "Montant"}), hide_index=True, width="stretch",
-        column_config={"Date": st.column_config.DateColumn(format="DD/MM/YYYY"),
-                       "Montant": st.column_config.NumberColumn(format="%+,.2f €")})
+    l1.metric("Ma part (dans le budget)", eur(mine),
+              help="Montant fixe défini dans data/<profil>/regles.yaml › loyer_fixe.")
+    l2.metric("Loyer versé à la propriétaire", eur(paid), help="Hors budget : seulement pour contrôle.")
+    l3.metric("Parts reçues des colocataires", eur(got), help="Hors budget : seulement pour contrôle.")
+    gap = paid - got - mine
+    l4.metric("Écart à régulariser", eur(gap, sign=True),
+              "avancé par vous" if gap > 1 else ("reçu en trop" if gap < -1 else "à l'équilibre"), delta_color="off",
+              help="Loyer versé − parts reçues − votre part. Positif : les colocataires vous doivent cette somme "
+                   "(ou ont payé en avance le mois précédent).")
+    hist_c = tx[tx["category"] == "Loyer & colocation (hors budget)"]
+    since = hist_c[hist_c["month"] <= m]
+    cum = -since["amount"].sum() - (-tx.loc[(tx["category"] == "Logement") & (tx["month"] <= m)
+                                             & (tx["source_cat"] == "loyer fixe"), "amount"].sum())
+    st.caption(f"Cumul depuis le début : {eur(cum, sign=True)} "
+               "(positif = avancé pour les colocataires). Les virements passés à partir du 25 comptent pour le mois suivant.")
+    if not coloc.empty:
+        with st.expander("Virements de la colocation ce mois"):
+            st.dataframe(coloc.sort_values("date")[["date", "label", "amount"]].rename(
+                columns={"date": "Date", "label": "Libellé", "amount": "Montant"}), hide_index=True, width="stretch",
+                column_config={"Date": st.column_config.DateColumn(format="DD/MM/YYYY"),
+                               "Montant": st.column_config.NumberColumn(format="%+,.2f €")})
 
 # ------------------------------------------------------------- plus grosses dépenses
 st.subheader("Plus grosses dépenses du mois")
@@ -114,11 +125,10 @@ st.dataframe(big[["date", "merchant", "category", "spend"]].rename(columns={
     column_config={"Date": st.column_config.DateColumn(format="DD/MM/YYYY"),
                    "Montant": st.column_config.NumberColumn(format="%,.2f €")})
 
-todo = cur[cur["category"] == "À classer"]
+todo = cur[cur["source_cat"] == "défaut"]
 if not todo.empty:
-    st.info(f"{len(todo)} opération(s) à classer ce mois ({eur(-todo['amount'].sum())}) : "
-            "corrigez-les dans la page Dépenses, en cochant « Règle » pour que le marchand soit reconnu "
-            "automatiquement aux prochains imports.")
+    st.info(f"{len(todo)} opération(s) non reconnue(s) ce mois, comptées en « Autres » "
+            f"({eur(-todo['amount'].sum(), sign=True)}) : classez-les dans Dépenses › À classer.")
 
 # ------------------------------------------------------------- historique
 st.subheader("Mois par mois")

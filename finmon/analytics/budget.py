@@ -78,7 +78,7 @@ def classify(tx: pd.DataFrame, overrides: pd.DataFrame | None = None,
             cats.append(found)
             srcs.append("banque")
             continue
-        cats.append("Autres revenus" if amount > 0 else "À classer")
+        cats.append("Autres revenus" if amount > 0 else "Autres dépenses")   # source « défaut » : à vérifier
         srcs.append("défaut")
     df["category"] = cats
     df["source_cat"] = srcs
@@ -98,7 +98,7 @@ def classify(tx: pd.DataFrame, overrides: pd.DataFrame | None = None,
     # Loyers payés/reçus en fin de mois pour le mois suivant : rattachés au mois couvert.
     cutoff = int(config.settings().get("logement_mois_suivant_apres", 25) or 0)
     if cutoff:
-        late = (df["category"] == "Logement") & (df["date"].dt.day >= cutoff)
+        late = df["category"].str.contains("Logement|Loyer", na=False) & (df["date"].dt.day >= cutoff)
         df.loc[late, "month"] = df.loc[late, "month"] + pd.DateOffset(months=1)
     df["year"] = df["date"].dt.year
     return df
@@ -175,7 +175,7 @@ def suggest_vacations(df: pd.DataFrame, known: pd.DataFrame, gap_days: int = 3, 
 # Virements vers les comptes d'investissement
 # --------------------------------------------------------------------------
 INVEST_TYPES = {"pea", "cto", "crypto", "assurance_vie"}
-LINKABLE = {"Virements internes", "Épargne & investissement", "À classer"}
+LINKABLE = {"Virements internes", "Épargne & investissement"}
 
 
 def link_investments(tx: pd.DataFrame, trades: pd.DataFrame, accounts: pd.DataFrame,
@@ -199,7 +199,8 @@ def link_investments(tx: pd.DataFrame, trades: pd.DataFrame, accounts: pd.DataFr
     moves["date"] = pd.to_datetime(moves["date"])
     names = accounts.set_index("id")["name"].to_dict()
     used: set = set()
-    cand = df[df["category"].isin(LINKABLE) & (df["source_cat"] != "manuel")].sort_values("date")
+    cand = df[(df["category"].isin(LINKABLE) | (df["source_cat"] == "défaut"))
+              & (df["source_cat"] != "manuel")].sort_values("date")
     for i, r in cand.iterrows():
         want = "deposit" if r["amount"] < 0 else "withdrawal"
         m = moves[(moves["kind"] == want) & ~moves["id"].isin(used)]
@@ -229,3 +230,33 @@ def _aliases(account_id: str, names: dict, accounts: pd.DataFrame) -> list[str]:
     inst = accounts.set_index("id")["institution"].get(account_id, "") or ""
     base = [w for w in (names.get(account_id, ""), inst) if w and len(w) > 3]
     return base + ALIASES.get(str(inst).lower(), [])
+
+
+# --------------------------------------------------------------------------
+# Loyer fixe (colocation)
+# --------------------------------------------------------------------------
+def add_fixed_rent(tx: pd.DataFrame, accounts: pd.DataFrame, until=None) -> pd.DataFrame:
+    """Ajoute « ma part du loyer » le 1er de chaque mois, selon `loyer_fixe` des règles du profil.
+
+    Les flux réels (loyer versé, parts reçues des colocataires) sont classés hors budget ; cette ligne
+    les remplace dans les dépenses. Barème : liste de {depuis: "AAAA-MM", montant: X}."""
+    plan = config.categories().get("loyer_fixe") or []
+    if not plan or tx.empty:
+        return tx
+    plan = sorted(({"start": pd.Timestamp(str(p["depuis"]) + "-01" if len(str(p["depuis"])) == 7 else str(p["depuis"])),
+                    "amount": float(p["montant"])} for p in plan), key=lambda p: p["start"])
+    end = pd.Timestamp(until) if until is not None else tx["date"].max()
+    courant = accounts.loc[accounts["type"] == "courant", "id"]
+    acc = (tx[tx["account_id"].isin(courant)]["account_id"].mode().iloc[0]
+           if tx["account_id"].isin(courant).any() else tx["account_id"].iloc[0])
+    rows = []
+    for m in pd.date_range(plan[0]["start"], end, freq="MS"):
+        amount = [p["amount"] for p in plan if p["start"] <= m][-1]
+        rows.append({"id": f"loyer-fixe-{m:%Y-%m}", "account_id": acc, "date": m, "value_date": m,
+                     "label": "Loyer — ma part (colocation)", "merchant": "LOYER (MA PART)", "amount": -amount,
+                     "bank_category": None, "bank_category_parent": None, "foreign_currency": None,
+                     "source": "loyer_fixe", "category": "Logement", "source_cat": "loyer fixe",
+                     "vacation_tag": None, "cat_type": "expense", "month": m, "year": m.year,
+                     "linked_account": None})
+    extra = pd.DataFrame(rows)
+    return pd.concat([tx, extra[[c for c in extra.columns if c in tx.columns]]], ignore_index=True)

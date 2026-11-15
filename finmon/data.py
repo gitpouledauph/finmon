@@ -42,6 +42,7 @@ def load(db: DB, today: date | None = None) -> Bundle:
     trades = db.table("trades")
     tx = budget.classify(raw_tx, overrides, dict(zip(accounts["id"], accounts["type"])))
     tx = budget.link_investments(tx, trades, accounts)
+    tx = budget.add_fixed_rent(tx, accounts)
     vacations = db.read("SELECT * FROM vacations ORDER BY start")
     snaps = db.table("position_snapshots")
     instruments = db.table("instruments")

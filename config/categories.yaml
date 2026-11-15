@@ -4,7 +4,7 @@
 #   1. correction manuelle faite dans le dashboard
 #   2. règles « rules » ci-dessous (expression régulière sur le libellé)
 #   3. catégorie fournie par Boursorama (via « bank_mapping »)
-#   4. « À classer »
+#   4. « Autres dépenses » / « Autres revenus » (à vérifier dans la page Dépenses › À classer)
 #
 # type : expense (dépense), income (revenu), transfer (mouvement interne,
 # épargne, investissement — exclu du budget).
@@ -26,7 +26,6 @@ categories:
   Éducation: {type: expense}
   Retraits espèces: {type: expense}
   Autres dépenses: {type: expense}
-  À classer: {type: expense}
   Salaire: {type: income}
   Autres revenus: {type: income}
   Remboursements entre amis: {type: expense}   # Lydia, virements entre amis : se compensent
@@ -48,6 +47,8 @@ rules:
   - {pattern: "TDF EMIS VIA CB|LYDIA|PAYLIB|SUMERIA|WERO", category: Remboursements entre amis}
   - {pattern: "TRADE REPUBLIC|BOURSORAMA.*(PEA|BOURSE)|VERS(EMENT)? PEA|ASSURANCE VIE|LINXEA|YOMONI|BINANCE|REVOLUT|\\bIBKR\\b|INTERACTIVE BROKERS|DEGIRO|FORTUNEO BOURSE", category: Épargne & investissement}
   - {pattern: "LIVRET|\\bLDDS?\\b|\\bLEP\\b|\\bCEL\\b|\\bPEL\\b|VIR.*VERS (MON|LIVRET)", category: Épargne livrets}
+  # Remboursement d'impôt reçu : un revenu exceptionnel, pas une dépense négative.
+  - {pattern: "DGFIP|IMPOT|TRESOR PUBLIC|FINANCES PUBLIQUES", category: Autres revenus, sign: credit}
   - {pattern: "DGFIP|IMPOT|TRESOR PUBLIC|TAXE (FONCIERE|HABITATION)|AMENDE", category: Impôts & taxes}
   - {pattern: "LOYER|FONCIA|NEXITY|EDF|ENGIE|TOTALENERGIES ELEC|EAU DE|SYNDIC", category: Logement}
   - {pattern: "AXA|MAIF|MACIF|MATMUT|ALLIANZ|GENERALI|ASSURANCE|ALAN|MUTUELLE", category: Assurances}

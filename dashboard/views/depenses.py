@@ -80,62 +80,99 @@ hm = hm.loc[hm.sum(axis=1).sort_values(ascending=False).index]
 plot(charts.heatmap(hm.clip(lower=0)), key="heat")
 
 # ------------------------------------------------------------- édition
-st.subheader("Opérations")
-st.caption("Corrigez une catégorie ou rattachez une dépense à des vacances (ex. billet d'avion acheté à l'avance) : "
-           "la correction est mémorisée et prime sur les règles automatiques.")
-cats = list((budget.category_types()).keys())
+import re as _re  # noqa: E402
+
+from finmon import config as _config  # noqa: E402
+
+cats = sorted(budget.category_types().keys())
 vac_names = [""] + b.vacations["name"].tolist()
-only = st.toggle("Seulement « À classer »", value=False)
-q = st.text_input("Rechercher un libellé", "")
-view = t_sel.sort_values("date", ascending=False)
-if only:
-    view = view[view["category"] == "À classer"]
-if q:
-    view = view[view["label"].str.contains(q, case=False, regex=False)]
-view = view.head(500)
-ed = st.data_editor(
-    view[["id", "date", "label", "merchant", "amount", "category", "vacation_tag", "source_cat"]].rename(columns={
-        "date": "Date", "label": "Libellé", "merchant": "Marchand", "amount": "Montant", "category": "Catégorie",
-        "vacation_tag": "Vacances", "source_cat": "Origine"}).assign(Règle=False),
-    hide_index=True, width="stretch", disabled=["id", "Date", "Libellé", "Marchand", "Montant", "Origine"],
-    column_config={
-        "id": None,
-        "Règle": st.column_config.CheckboxColumn(
-            help="Coché : la catégorie choisie s'appliquera automatiquement à toutes les opérations de ce "
-                 "marchand, y compris aux prochains imports."),
-        "Date": st.column_config.DateColumn(format="DD/MM/YYYY"),
-        "Montant": st.column_config.NumberColumn(format="%.2f €"),
-        "Catégorie": st.column_config.SelectboxColumn(options=cats, required=True),
-        "Vacances": st.column_config.SelectboxColumn(options=vac_names),
-    }, key="editor")
-if st.button("Enregistrer les corrections", type="primary"):
-    orig = view.set_index("id")
-    changed = []
-    for r in ed.itertuples(index=False):
-        o = orig.loc[r.id]
-        cat_changed = r.Catégorie != o["category"]
-        vac = r.Vacances if isinstance(r.Vacances, str) and r.Vacances else None
-        vac_changed = vac != (o["vacation_tag"] if isinstance(o["vacation_tag"], str) and o["vacation_tag"] else None)
-        if cat_changed or vac_changed:
-            changed.append({"tx_id": r.id, "category": r.Catégorie if (cat_changed or o["source_cat"] == "manuel") else None,
-                            "vacation": vac})
-    import re as _re
+real = t[t["source_cat"] != "loyer fixe"]
+todo = real[real["source_cat"] == "défaut"]
+tab_todo, tab_all = st.tabs([f"À classer ({len(todo)})", "Toutes les opérations"])
 
-    from finmon import config as _config
-
-    rules = 0
-    for r in ed[ed["Règle"]].itertuples(index=False):
-        merchant = str(r.Marchand or "").strip()
-        if len(merchant) >= 3:
-            o = orig.loc[r.id]
-            _config.add_auto_rule(_re.escape(merchant), r.Catégorie, "debit" if o["amount"] < 0 else "credit")
-            rules += 1
-    if changed or rules:
-        if changed:
-            get_db().upsert("category_overrides", pd.DataFrame(changed), mode="replace")
-        invalidate()
-        st.success(f"{len(changed)} correction(s) enregistrée(s)" + (f", {rules} règle(s) créée(s)" if rules else "") + ".")
-        st.rerun()
+with tab_todo:
+    st.caption("Opérations qu'aucune règle ne reconnaît : elles sont comptées en « Autres dépenses » "
+               "(ou « Autres revenus »). Choisissez une catégorie par marchand dans le menu déroulant : "
+               "toutes ses opérations sont reclassées, et il sera reconnu automatiquement aux prochains imports.")
+    if todo.empty:
+        st.success("Tout est classé.")
     else:
-        st.info("Aucune modification.")
+        g = (todo.assign(sens=todo["amount"].lt(0).map({True: "debit", False: "credit"}))
+             .groupby(["merchant", "sens"])
+             .agg(Opérations=("id", "size"), Total=("amount", "sum"), Dernière=("date", "max"),
+                  Exemple=("label", "first"), Catégorie=("category", "first"))
+             .reset_index().sort_values("Total"))
+        ged = st.data_editor(
+            g.rename(columns={"merchant": "Marchand"}), hide_index=True, width="stretch", key="todo_editor",
+            disabled=["Marchand", "sens", "Opérations", "Total", "Dernière", "Exemple"],
+            column_config={
+                "sens": None,
+                "Catégorie": st.column_config.SelectboxColumn(options=cats, required=True, width="medium"),
+                "Total": st.column_config.NumberColumn(format="%+,.2f €"),
+                "Dernière": st.column_config.DateColumn(format="DD/MM/YYYY"),
+                "Exemple": st.column_config.TextColumn(width="large")})
+        if st.button("Enregistrer le classement", type="primary", key="save_todo"):
+            n = 0
+            for r in ged.itertuples(index=False):
+                default = "Autres dépenses" if r.sens == "debit" else "Autres revenus"
+                if r.Catégorie != default and len(str(r.Marchand).strip()) >= 2:
+                    _config.add_auto_rule(_re.escape(str(r.Marchand).strip()), r.Catégorie, r.sens)
+                    n += 1
+            if n:
+                invalidate()
+                st.success(f"{n} marchand(s) classé(s) : règles enregistrées.")
+                st.rerun()
+            else:
+                st.info("Aucune catégorie modifiée.")
+
+with tab_all:
+    st.caption("Corrigez une catégorie ou rattachez une dépense à des vacances (ex. billet d'avion acheté à "
+               "l'avance). Cochez « Règle » pour appliquer la catégorie à tout le marchand, y compris aux "
+               "prochains imports.")
+    q = st.text_input("Rechercher un libellé", "")
+    view = t_sel[t_sel["source_cat"] != "loyer fixe"].sort_values("date", ascending=False)
+    if q:
+        view = view[view["label"].str.contains(q, case=False, regex=False)]
+    view = view.head(500)
+    ed = st.data_editor(
+        view[["id", "date", "label", "merchant", "amount", "category", "vacation_tag", "source_cat"]].rename(columns={
+            "date": "Date", "label": "Libellé", "merchant": "Marchand", "amount": "Montant", "category": "Catégorie",
+            "vacation_tag": "Vacances", "source_cat": "Origine"}).assign(Règle=False),
+        hide_index=True, width="stretch", disabled=["id", "Date", "Libellé", "Marchand", "Montant", "Origine"],
+        column_config={
+            "id": None,
+            "Règle": st.column_config.CheckboxColumn(
+                help="Coché : la catégorie choisie s'appliquera automatiquement à toutes les opérations de ce "
+                     "marchand, y compris aux prochains imports."),
+            "Date": st.column_config.DateColumn(format="DD/MM/YYYY"),
+            "Montant": st.column_config.NumberColumn(format="%.2f €"),
+            "Catégorie": st.column_config.SelectboxColumn(options=cats, required=True),
+            "Vacances": st.column_config.SelectboxColumn(options=vac_names),
+        }, key="editor")
+    if st.button("Enregistrer les corrections", type="primary"):
+        orig = view.set_index("id")
+        changed = []
+        for r in ed.itertuples(index=False):
+            o = orig.loc[r.id]
+            cat_changed = r.Catégorie != o["category"]
+            vac = r.Vacances if isinstance(r.Vacances, str) and r.Vacances else None
+            vac_changed = vac != (o["vacation_tag"] if isinstance(o["vacation_tag"], str) and o["vacation_tag"] else None)
+            if cat_changed or vac_changed:
+                changed.append({"tx_id": r.id, "category": r.Catégorie if (cat_changed or o["source_cat"] == "manuel") else None,
+                                "vacation": vac})
+        rules = 0
+        for r in ed[ed["Règle"]].itertuples(index=False):
+            merchant = str(r.Marchand or "").strip()
+            if len(merchant) >= 3:
+                o = orig.loc[r.id]
+                _config.add_auto_rule(_re.escape(merchant), r.Catégorie, "debit" if o["amount"] < 0 else "credit")
+                rules += 1
+        if changed or rules:
+            if changed:
+                get_db().upsert("category_overrides", pd.DataFrame(changed), mode="replace")
+            invalidate()
+            st.success(f"{len(changed)} correction(s) enregistrée(s)" + (f", {rules} règle(s) créée(s)" if rules else "") + ".")
+            st.rerun()
+        else:
+            st.info("Aucune modification.")
 download_df(t_sel.drop(columns=["month"]).set_index("date"), "operations")
