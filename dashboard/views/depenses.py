@@ -86,7 +86,7 @@ from finmon import config as _config  # noqa: E402
 
 cats = sorted(budget.category_types().keys())
 vac_names = [""] + b.vacations["name"].tolist()
-real = t[~t["source_cat"].isin(["loyer fixe", "exceptionnel"])]
+real = t[~t["source_cat"].isin(["loyer fixe", "ajustement", "étalé"])]
 todo = real[real["source_cat"] == "défaut"]
 tab_todo, tab_all = st.tabs([f"À classer ({len(todo)})", "Toutes les opérations"])
 
@@ -130,7 +130,7 @@ with tab_all:
                "l'avance). Cochez « Règle » pour appliquer la catégorie à tout le marchand, y compris aux "
                "prochains imports.")
     q = st.text_input("Rechercher un libellé", "")
-    view = t_sel[~t_sel["source_cat"].isin(["loyer fixe", "exceptionnel"])].sort_values("date", ascending=False)
+    view = t_sel[~t_sel["source_cat"].isin(["loyer fixe", "ajustement", "étalé"])].sort_values("date", ascending=False)
     if q:
         view = view[view["label"].str.contains(q, case=False, regex=False)]
     view = view.head(500)

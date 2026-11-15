@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from common import bundle, detail_button, empty_state, eur, operations_dialog, plot
+from common import adjustments_editor, bundle, detail_button, empty_state, eur, operations_dialog, plot
 from finmon import charts
 from finmon.analytics import budget
 
@@ -16,8 +16,8 @@ if tx.empty:
 
 types = b.accounts.set_index("id")["type"]
 tx = tx[tx["account_id"].map(types).isin(["courant", "autre"])]   # le budget se lit sur courant + carte
-months = sorted(tx["month"].unique(), reverse=True)
-last_data = tx["date"].max()
+last_data = tx.loc[~tx["source_cat"].isin(["étalé", "ajustement", "loyer fixe"]), "date"].max()
+months = sorted((m for m in tx["month"].unique() if pd.Timestamp(m) <= last_data), reverse=True)
 # Mois proposé : le dernier mois complet (le mois en cours reste consultable).
 default = next((i for i, m in enumerate(months) if m + pd.offsets.MonthEnd(0) <= last_data), 0)
 m = st.selectbox("Mois", months, index=default, format_func=charts.mois)
@@ -43,19 +43,21 @@ fa = g12.mean() if not g12.empty else pd.Series(0.0, index=g.columns)
 # ------------------------------------------------------------- KPIs
 k = st.columns(4)
 k[0].metric("Salaire", eur(f["salaire"]),
-            (f"+ {eur(f['exceptionnel'])} exceptionnels" if f["exceptionnel"] else
+            (f"+ {eur(f['exceptionnel'])} primes & ajustements" if f["exceptionnel"] else
              f"{eur(f['salaire'] - fa['salaire'], sign=True)} vs moy. 12 mois"), delta_color="off" if f["exceptionnel"] else "normal",
-            help="Salaire, plus les revenus exceptionnels saisis dans Vue globale. Les autres entrées sont ignorées.")
+            help="Salaire + primes / CE + remboursement d'impôts étalé + ajustements manuels. Les autres entrées sont ignorées.")
 k[1].metric("Loyer", eur(f["loyer"]), help="Votre part fixe (colocation).")
 k[2].metric("Dépenses hors loyer", eur(f["depenses"]),
             f"{eur(f['depenses'] - fa['depenses'], sign=True)} vs moy. 12 mois", delta_color="inverse")
 k[3].metric("Économisé ce mois", eur(f["economise"], sign=True),
             f"{f['taux'] * 100:.0f} % du salaire" if f["taux"] == f["taux"] else None, delta_color="off",
-            help="Salaire + revenus exceptionnels − loyer − dépenses hors loyer.")
-NOTE = {"depenses": "Paiements par carte, prélèvements et retraits d'espèces du mois, hors loyer : aucun "
-                    "virement (émis ou reçu)"
+            help="Revenus (salaire + primes & ajustements) − loyer − dépenses hors loyer.")
+NOTE = {"depenses": "Paiements par carte, prélèvements et retraits d'espèces du mois, hors loyer, aucun "
+                    "virement ; plus les remboursements santé rattachés et les ajustements manuels"
                     + (" ; avoirs carte déduits." if refunds else "."),
         "salaire": "Virements de salaire reçus dans le mois.", "loyer": "Votre part fixe, comptée le 1er du mois."}
+if detail_button(k[0], "dlg_exc", "Primes & ajustements") and f["exceptionnel"]:
+    operations_dialog(f"Primes & ajustements — {charts.mois(m)}", budget.global_ops(cur, "exceptionnel", refunds))
 for col, part, lab in ((k[0], "salaire", "Salaire"), (k[1], "loyer", "Loyer"), (k[2], "depenses", "Dépenses hors loyer")):
     if detail_button(col, f"dlg_{part}"):
         operations_dialog(f"{lab} — {charts.mois(m)}", budget.global_ops(cur, part, refunds), NOTE[part])
@@ -153,3 +155,7 @@ for col, lab, color in (("income", "Revenus", charts.FIXED["Revenus"]), ("expens
 fig.add_vline(x=m, line_dash="dot", line_color=charts.MUTED)
 fig.update_layout(barmode="group", bargap=0.25, bargroupgap=0.05)
 plot(charts.layout(fig, 340), key="hist")
+
+# ------------------------------------------------------------- ajustements
+with st.expander("Ajustements manuels"):
+    adjustments_editor(list(tx["month"].unique()), "mois", default_month=m)

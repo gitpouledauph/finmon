@@ -206,11 +206,14 @@ def operations_dialog(title: str, ops: pd.DataFrame, sign_note: str = "") -> Non
         st.dataframe(signed_style(by.rename(columns={"sum": "Montant", "size": "Opérations"}).reset_index()
                                   .rename(columns={"category": "Catégorie"}), ["Montant"])
                      .format({"Montant": "{:+,.2f} €"}), hide_index=True, width="stretch")
-    editable = ~o["id"].astype(str).str.startswith(("loyer-fixe", "exc-"))
+    editable = ~o["id"].astype(str).str.startswith(("loyer-fixe", "adj-", "spread-"))
     st.caption("« Ma part » : la fraction de la dépense qui vous revient (50 % pour une note partagée en deux). "
                "Modifiez-la puis enregistrez : seule cette part est comptée.")
+    lab = o["label"].astype(str)
+    if "matched_with" in o.columns:
+        lab = lab.where(o["matched_with"].isna(), lab + " → dépense du " + o["matched_with"].astype(str))
     df = pd.DataFrame({"id": o["id"], "Date": o["date"].dt.strftime("%d/%m/%Y"), "Marchand": o["merchant"],
-                       "Libellé": o["label"], "Catégorie": o["category"], "Montant": o["amount_full"],
+                       "Libellé": lab, "Catégorie": o["category"], "Montant": o["amount_full"],
                        "Ma part (%)": (o["factor"] * 100).round(1), "Compté": o["amount"]})
     ed = st.data_editor(df, hide_index=True, width="stretch", height=420, key=f"dlg_ed_{title}",
                         disabled=["id", "Date", "Marchand", "Libellé", "Catégorie", "Montant", "Compté"],
@@ -236,3 +239,49 @@ def operations_dialog(title: str, ops: pd.DataFrame, sign_note: str = "") -> Non
             st.rerun()
         else:
             st.info("Aucune part modifiée.")
+
+
+# ------------------------------------------------------------------ ajustements manuels
+def adjustments_editor(months: list, key: str, default_month=None) -> None:
+    """Ajouter / modifier / supprimer des ajustements manuels (mois, cible, montant ±, explication)."""
+    import uuid
+
+    from finmon import charts as _charts
+
+    db = get_db()
+    months = sorted({pd.Timestamp(m) for m in months}, reverse=True)
+    idx = months.index(pd.Timestamp(default_month)) if default_month is not None and pd.Timestamp(default_month) in months else 0
+    with st.form(f"adj_form_{key}", clear_on_submit=True):
+        f1, f2, f3, f4 = st.columns([1.2, 1, 1, 2.5], vertical_alignment="bottom")
+        m = f1.selectbox("Mois", months, index=idx, format_func=_charts.mois)
+        target = f2.selectbox("Sur", ["Dépenses", "Revenus"])
+        amt = f3.number_input("Montant (± €)", step=10.0, format="%.2f",
+                              help="Dépenses : −875 réduit les dépenses du mois de 875 €, +100 les augmente. "
+                                   "Revenus : +500 ajoute 500 € de revenus.")
+        lab = f4.text_input("Explication", placeholder="ex. remboursement d'un ami pour le voyage")
+        if st.form_submit_button("Ajouter l'ajustement") and amt:
+            db.upsert("manual_adjustments", pd.DataFrame([{
+                "id": uuid.uuid4().hex[:10], "month": pd.Timestamp(m).strftime("%Y-%m"),
+                "target": "depenses" if target == "Dépenses" else "revenus", "amount": float(amt),
+                "label": lab.strip() or "Ajustement manuel"}]))
+            invalidate()
+            st.rerun()
+    adj = db.read("SELECT * FROM manual_adjustments ORDER BY month DESC")
+    if adj.empty:
+        st.caption("Aucun ajustement.")
+        return
+    shown = pd.DataFrame({"Supprimer": False, "id": adj["id"],
+                          "Mois": [_charts.mois(pd.Timestamp(m + "-01")) for m in adj["month"]],
+                          "Sur": adj["target"].map({"depenses": "Dépenses", "revenus": "Revenus"}),
+                          "Montant": adj["amount"], "Explication": adj["label"]})
+    ed = st.data_editor(shown, hide_index=True, width="stretch", key=f"adj_ed_{key}", disabled=["id", "Mois", "Sur"],
+                        column_config={"id": None, "Montant": st.column_config.NumberColumn(format="%+,.2f €")})
+    if st.button("Enregistrer les ajustements", key=f"adj_save_{key}"):
+        for r in ed.itertuples(index=False):
+            if r.Supprimer:
+                db.execute("DELETE FROM manual_adjustments WHERE id = ?", [r.id])
+            else:
+                db.execute("UPDATE manual_adjustments SET amount = ?, label = ? WHERE id = ?",
+                           [float(r.Montant), r.Explication, r.id])
+        invalidate()
+        st.rerun()

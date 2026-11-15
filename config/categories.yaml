@@ -19,6 +19,7 @@ categories:
   Shopping: {type: expense}
   Loisirs & culture: {type: expense}
   Santé: {type: expense}
+  Soins & beauté: {type: expense}
   Abonnements & télécom: {type: expense}
   Assurances: {type: expense}
   Impôts & taxes: {type: expense}
@@ -31,8 +32,11 @@ categories:
   Autres revenus: {type: income}
   Remboursements entre amis: {type: expense}   # Lydia, virements entre amis : se compensent
   Aide familiale: {type: income}
-  Revenus exceptionnels: {type: income}                          # saisis à la main (Vue globale)
-  Revenus exceptionnels (déduits des dépenses): {type: expense}  # idem, viennent en déduction des dépenses
+  Primes & CE: {type: income}                         # comptées dans les revenus, en plus du salaire
+  Remboursement d'impôts (étalé): {type: income}      # voir « etalement » dans les règles du profil
+  Ajustements manuels (revenus): {type: income}       # saisis dans Vue globale / Bilan du mois
+  Ajustements manuels (dépenses): {type: expense}     # idem : + augmente, − réduit les dépenses
+  Remboursements santé: {type: expense}               # mutuelle, CPAM : déduits de la dépense santé
   Virements internes: {type: transfer}
   Épargne livrets: {type: transfer}             # vers / depuis les livrets : épargne nette
   Épargne & investissement: {type: transfer}    # vers les courtiers (rapprochés automatiquement)
@@ -47,6 +51,7 @@ rules:
   - {pattern: "RELEV[EÉ] DIFF[EÉ]R[EÉ]|DEBIT DIFFERE CARTE|PRLV CARTE DIFFERE", category: Virements internes}
   - {pattern: "SALAIRE|PAIE |REMUNERATION", category: Salaire}
   - {pattern: "PRIME PARRAINAGE|PARRAINAGE", category: Autres revenus, sign: credit}
+  - {pattern: "CPAM|MUTUELLE|SEPA GENERATION|\\bALAN\\b|HARMONIE MUTUELLE|\\bMGEN\\b|SWISS ?LIFE PREV", category: Remboursements santé, sign: credit}
   - {pattern: "TDF EMIS VIA CB|LYDIA|PAYLIB|SUMERIA|WERO", category: Remboursements entre amis}
   - {pattern: "TRADE REPUBLIC|BOURSORAMA.*(PEA|BOURSE)|VERS(EMENT)? PEA|ASSURANCE VIE|LINXEA|YOMONI|BINANCE|REVOLUT|\\bIBKR\\b|INTERACTIVE BROKERS|DEGIRO|FORTUNEO BOURSE", category: Épargne & investissement}
   - {pattern: "LIVRET|\\bLDDS?\\b|\\bLEP\\b|\\bCEL\\b|\\bPEL\\b|VIR.*VERS (MON|LIVRET)", category: Épargne livrets}
@@ -119,8 +124,8 @@ bank_mapping:
   livres: Shopping
   mobilier: Shopping
   bricolage: Shopping
-  bien etre: Santé
-  coiffeur: Santé
+  bien etre: Soins & beauté
+  coiffeur: Soins & beauté
   laverie: Autres dépenses
   animaux: Autres dépenses
   entretien reparation: Transports

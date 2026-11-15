@@ -314,7 +314,7 @@ def test_simulation_projection():
     assert q["low"] < q["central"] < q["high"] and q["invested"] == 1000 + 100 * 120
 
 
-def test_share_factor_and_exceptional_income(tmp_path):
+def test_share_factor_and_adjustments(tmp_path):
     from finmon.analytics import budget
     from finmon.db import set_override
 
@@ -330,9 +330,9 @@ def test_share_factor_and_exceptional_income(tmp_path):
     accounts = db.read("SELECT * FROM accounts")
     cl = budget.classify(tx, db.table("category_overrides"), dict(zip(accounts["id"], accounts["type"])))
     assert cl.set_index("id").loc[suit, "amount"] == pytest.approx(-261.0)
-    exc = pd.DataFrame([{"id": "a", "date": "2026-02-10", "label": "Prime", "amount": 1000.0, "offsets_expenses": 0},
-                        {"id": "b", "date": "2026-02-11", "label": "Remb. voyage", "amount": 100.0, "offsets_expenses": 1}])
-    cl = budget.add_exceptional(cl, exc, accounts)
+    adj = pd.DataFrame([{"id": "a", "month": "2026-02", "target": "revenus", "amount": 1000.0, "label": "Prime"},
+                        {"id": "b", "month": "2026-02", "target": "depenses", "amount": -100.0, "label": "Remb."}])
+    cl = budget.add_adjustments(cl, adj, accounts)
     g = budget.global_monthly(cl).loc["2026-02-01"]
     assert g["exceptionnel"] == 1000
-    assert g["depenses"] == pytest.approx(4.29 + 261.0 - 100.0)   # carte (part 50 %) − remboursement déduit
+    assert g["depenses"] == pytest.approx(4.29 + 261.0 - 100.0)   # carte (part 50 %) − ajustement

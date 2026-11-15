@@ -114,12 +114,12 @@ CREATE TABLE IF NOT EXISTS vacations (
     note TEXT
 );
 
-CREATE TABLE IF NOT EXISTS exceptional_income (
+CREATE TABLE IF NOT EXISTS manual_adjustments (
     id TEXT PRIMARY KEY,
-    date TEXT NOT NULL,
-    label TEXT NOT NULL,
-    amount REAL NOT NULL,          -- positif, en EUR
-    offsets_expenses INTEGER NOT NULL DEFAULT 0   -- 1 : réduit les dépenses du mois ; 0 : revenu en plus
+    month TEXT NOT NULL,            -- AAAA-MM
+    target TEXT NOT NULL,           -- depenses | revenus
+    amount REAL NOT NULL,           -- signé : + augmente, − réduit
+    label TEXT
 );
 
 CREATE TABLE IF NOT EXISTS import_log (

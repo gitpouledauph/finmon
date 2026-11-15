@@ -278,15 +278,22 @@ def add_fixed_rent(tx: pd.DataFrame, accounts: pd.DataFrame, until=None) -> pd.D
 # --------------------------------------------------------------------------
 INCOME_MAIN = "Salaire"
 RENT = "Loyer"
-EXC_INCOME = "Revenus exceptionnels"
-EXC_OFFSET = "Revenus exceptionnels (déduits des dépenses)"
+ADJ_INCOME = "Ajustements manuels (revenus)"
+ADJ_EXPENSE = "Ajustements manuels (dépenses)"
+SPREAD = "Remboursement d'impôts (étalé)"
+BONUS = "Primes & CE"
+HEALTH_REFUND = "Remboursements santé"
+EXTRA_INCOME = {BONUS, SPREAD, ADJ_INCOME}           # comptés dans les revenus en plus du salaire
+EXPENSE_OFFSETS = {ADJ_EXPENSE, HEALTH_REFUND}        # comptés (en ±) dans les dépenses, hors critère « carte »
 
 
 def global_monthly(df: pd.DataFrame, deduct_refunds: bool = False) -> pd.DataFrame:
     """Par mois : salaire, loyer, autres dépenses, économisé, taux, et où l'épargne est allée.
 
-    - revenus = salaire + revenus exceptionnels saisis à la main (le reste des entrées est ignoré) ;
-      un revenu exceptionnel marqué « réduit les dépenses » vient en déduction des dépenses du mois ;
+    - revenus = salaire + primes / CE + remboursement d'impôts étalé + ajustements manuels (revenus) ;
+      toutes les autres entrées d'argent sont ignorées ;
+    - dépenses : aussi les remboursements santé (mutuelle, CPAM, rattachés au mois de la dépense) et
+      les ajustements manuels (dépenses), en plus ou en moins ;
     - dépenses = paiements par carte, prélèvements et retraits d'espèces, hors loyer : aucun virement
       (émis ou reçu) n'est compté. `deduct_refunds` déduit les avoirs / annulations carte ;
     - économisé = salaire − loyer − dépenses ;
@@ -300,7 +307,7 @@ def global_monthly(df: pd.DataFrame, deduct_refunds: bool = False) -> pd.DataFra
     spend = -global_ops(df, "depenses", deduct_refunds).groupby("month")["amount"].sum()
     inv = -df[df["category"] == "Épargne & investissement"].groupby("month")["amount"].sum()
     liv = -df[df["category"] == "Épargne livrets"].groupby("month")["amount"].sum()
-    exc = df[df["category"] == EXC_INCOME].groupby("month")["amount"].sum()
+    exc = df[df["category"].isin(EXTRA_INCOME)].groupby("month")["amount"].sum()
     out = pd.DataFrame({"salaire": sal, "exceptionnel": exc, "loyer": rent, "depenses": spend,
                         "investi": inv, "livrets": liv}).fillna(0.0)
     out = out.sort_index()
@@ -327,10 +334,10 @@ def global_ops(df: pd.DataFrame, part: str, deduct_refunds: bool = False) -> pd.
         card = lab.str.match(r"^(CARTE\s|PRLV\b|PRELEVEMENT|RETRAIT\s|RET\s?DAB)") & (df["amount"] < 0)
         refund = lab.str.match(r"^(AVOIR|ANNUL(ATION)? CARTE)\b") & (df["amount"] > 0)
         keep = card | (refund if deduct_refunds else False)
-        offset = df["category"] == EXC_OFFSET          # revenus exceptionnels qui réduisent les dépenses
-        return df[(keep & (df["cat_type"] == "expense") & (df["category"] != RENT)) | offset]
+        offset = df["category"].isin(EXPENSE_OFFSETS)
+        return df[(keep & (df["cat_type"] == "expense") & (df["category"] != RENT) & ~offset) | offset]
     if part == "exceptionnel":
-        return df[df["category"] == EXC_INCOME]
+        return df[df["category"].isin(EXTRA_INCOME)]
     if part == "investi":
         return df[df["category"] == "Épargne & investissement"]
     if part == "livrets":
@@ -338,21 +345,82 @@ def global_ops(df: pd.DataFrame, part: str, deduct_refunds: bool = False) -> pd.
     raise ValueError(part)
 
 
-def add_exceptional(tx: pd.DataFrame, exc: pd.DataFrame, accounts: pd.DataFrame) -> pd.DataFrame:
-    """Ajoute les revenus exceptionnels saisis à la main (table exceptional_income)."""
-    if exc is None or exc.empty or tx.empty:
-        return tx
+def _main_account(tx: pd.DataFrame, accounts: pd.DataFrame) -> str:
     courant = accounts.loc[accounts["type"] == "courant", "id"]
-    acc = (tx[tx["account_id"].isin(courant)]["account_id"].mode().iloc[0]
-           if tx["account_id"].isin(courant).any() else tx["account_id"].iloc[0])
-    d = pd.to_datetime(exc["date"])
-    off = exc["offsets_expenses"].astype(bool)
-    rows = pd.DataFrame({
-        "id": "exc-" + exc["id"].astype(str), "account_id": acc, "date": d, "value_date": d,
-        "label": exc["label"], "merchant": exc["label"].str.upper(), "amount": exc["amount"].abs(),
-        "source": "exceptionnel", "category": np.where(off, EXC_OFFSET, EXC_INCOME),
-        "source_cat": "exceptionnel", "cat_type": np.where(off, "expense", "income"),
-        "month": d.dt.to_period("M").dt.to_timestamp(), "year": d.dt.year, "factor": 1.0,
-        "amount_full": exc["amount"].abs(),
-    })
-    return pd.concat([tx, rows[[c for c in rows.columns if c in tx.columns]]], ignore_index=True)
+    return (tx[tx["account_id"].isin(courant)]["account_id"].mode().iloc[0]
+            if tx["account_id"].isin(courant).any() else tx["account_id"].iloc[0])
+
+
+def _synthetic(tx: pd.DataFrame, rows: list[dict]) -> pd.DataFrame:
+    if not rows:
+        return tx
+    extra = pd.DataFrame(rows)
+    extra["date"] = pd.to_datetime(extra["date"])
+    extra["value_date"] = extra["date"]
+    extra["month"] = extra["date"].dt.to_period("M").dt.to_timestamp()
+    extra["year"] = extra["date"].dt.year
+    extra["factor"] = 1.0
+    extra["amount_full"] = extra["amount"]
+    types = category_types()
+    extra["cat_type"] = extra["category"].map(types).fillna("expense")
+    return pd.concat([tx, extra[[c for c in extra.columns if c in tx.columns]]], ignore_index=True)
+
+
+def add_adjustments(tx: pd.DataFrame, adj: pd.DataFrame, accounts: pd.DataFrame) -> pd.DataFrame:
+    """Ajustements manuels (table manual_adjustments) : un mois, une cible (dépenses / revenus),
+    un montant signé et une explication. Dépenses : +X les augmente, −X les réduit."""
+    if adj is None or adj.empty or tx.empty:
+        return tx
+    acc = _main_account(tx, accounts)
+    rows = []
+    for r in adj.itertuples():
+        exp = r.target == "depenses"
+        rows.append({"id": f"adj-{r.id}", "account_id": acc, "date": f"{r.month}-01", "label": r.label or "Ajustement",
+                     "merchant": "AJUSTEMENT MANUEL", "amount": -float(r.amount) if exp else float(r.amount),
+                     "category": ADJ_EXPENSE if exp else ADJ_INCOME, "source": "ajustement", "source_cat": "ajustement"})
+    return _synthetic(tx, rows)
+
+
+def spread_income(tx: pd.DataFrame, accounts: pd.DataFrame) -> pd.DataFrame:
+    """Étale certaines entrées sur plusieurs mois (règles du profil : etalement: [{pattern, mois}]).
+    L'entrée d'origine est mise hors budget ; N lignes de montant/N sont ajoutées à partir de son mois."""
+    plan = config.categories().get("etalement") or []
+    if not plan or tx.empty:
+        return tx
+    df = tx.copy()
+    rows = []
+    for p in plan:
+        rx = re.compile(p["pattern"], re.I)
+        n = int(p.get("mois", 1))
+        hit = df[(df["amount"] > 0) & df["label"].fillna("").str.contains(rx) & (df["source_cat"] != "manuel")]
+        for i, r in hit.iterrows():
+            df.at[i, "category"], df.at[i, "cat_type"], df.at[i, "source_cat"] = "Virements internes", "transfer", "étalé"
+            for k in range(n):
+                m = r["month"] + pd.DateOffset(months=k)
+                rows.append({"id": f"spread-{r['id']}-{k}", "account_id": r["account_id"], "date": m,
+                             "label": f"{p.get('libelle', SPREAD)} ({k + 1}/{n})", "merchant": "ÉTALEMENT",
+                             "amount": r["amount"] / n, "category": SPREAD, "source": "etalement",
+                             "source_cat": "étalé"})
+    return _synthetic(df, rows)
+
+
+def match_health_refunds(tx: pd.DataFrame, days: int = 62) -> pd.DataFrame:
+    """Remboursements santé (mutuelle, CPAM) : rattachés au mois de la dépense santé correspondante —
+    la plus proche en montant (≥ remboursement), dans les `days` jours qui précèdent ; sinon même mois."""
+    df = tx.copy()
+    ref = df[df["category"] == HEALTH_REFUND]
+    if ref.empty:
+        return df
+    health = df[(df["category"] == "Santé") & (df["amount"] < 0)]
+    used: set = set()
+    df["matched_with"] = None if "matched_with" not in df.columns else df["matched_with"]
+    for i, r in ref.sort_values("date").iterrows():
+        c = health[(health["date"] <= r["date"]) & (health["date"] >= r["date"] - pd.Timedelta(days=days))
+                   & (-health["amount"] >= r["amount"] - 0.01) & ~health.index.isin(used)]
+        if c.empty:
+            continue
+        j = (-c["amount"] - r["amount"]).idxmin()
+        used.add(j)
+        df.at[i, "month"] = df.at[j, "month"]
+        df.at[i, "matched_with"] = f"{df.at[j, 'date']:%d/%m/%Y} {df.at[j, 'merchant']} ({-df.at[j, 'amount']:.2f} €)"
+    return df
