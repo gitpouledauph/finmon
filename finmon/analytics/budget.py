@@ -11,10 +11,18 @@ from .. import config
 from ..parsing import norm
 
 
-@lru_cache(maxsize=None)
-def _compiled_rules() -> list[tuple[re.Pattern, str]]:
+def _compiled_rules() -> list[tuple[re.Pattern, str, str | None]]:
     rules = config.categories().get("rules") or []
-    return [(re.compile(r["pattern"], re.I), r["category"]) for r in rules]
+    return _compile(tuple((r["pattern"], r["category"], r.get("sign")) for r in rules))
+
+
+@lru_cache(maxsize=8)
+def _compile(rules: tuple) -> list[tuple[re.Pattern, str, str | None]]:
+    """Règle = motif sur le libellé, catégorie, et facultativement « sign: debit | credit »."""
+    return [(re.compile(p, re.I), c, s) for p, c, s in rules]
+
+
+_compiled_rules.cache_clear = _compile.cache_clear  # compat : common.invalidate()
 
 
 def category_types() -> dict[str, str]:
@@ -59,7 +67,8 @@ def classify(tx: pd.DataFrame, overrides: pd.DataFrame | None = None,
             cats.append("Autres revenus" if INTEREST_RE.search(text) and amount > 0 else "Virements internes")
             srcs.append("compte")
             continue
-        found = next((c for p, c in rules if p.search(text)), None)
+        found = next((c for p, c, sg in rules if p.search(text)
+                      and (sg is None or (sg == "debit") == (amount < 0))), None)
         if found:
             cats.append(found)
             srcs.append("règle")
@@ -86,6 +95,11 @@ def classify(tx: pd.DataFrame, overrides: pd.DataFrame | None = None,
     df["cat_type"] = df["category"].map(types).fillna("expense")
     df["date"] = pd.to_datetime(df["date"])
     df["month"] = df["date"].dt.to_period("M").dt.to_timestamp()
+    # Loyers payés/reçus en fin de mois pour le mois suivant : rattachés au mois couvert.
+    cutoff = int(config.settings().get("logement_mois_suivant_apres", 25) or 0)
+    if cutoff:
+        late = (df["category"] == "Logement") & (df["date"].dt.day >= cutoff)
+        df.loc[late, "month"] = df.loc[late, "month"] + pd.DateOffset(months=1)
     df["year"] = df["date"].dt.year
     return df
 
@@ -155,3 +169,63 @@ def suggest_vacations(df: pd.DataFrame, known: pd.DataFrame, gap_days: int = 3, 
         rows.append({"name": f"Séjour {start:%b %Y} ({ccys})", "start": start.date(), "end": end.date(),
                      "ops": len(g), "total": float(g["spend"].sum()), "devises": ccys})
     return pd.DataFrame(rows)
+
+
+# --------------------------------------------------------------------------
+# Virements vers les comptes d'investissement
+# --------------------------------------------------------------------------
+INVEST_TYPES = {"pea", "cto", "crypto", "assurance_vie"}
+LINKABLE = {"Virements internes", "Épargne & investissement", "À classer"}
+
+
+def link_investments(tx: pd.DataFrame, trades: pd.DataFrame, accounts: pd.DataFrame,
+                     max_days: int = 7, early_days: int = 3) -> pd.DataFrame:
+    """Rapproche les virements bancaires des versements/retraits connus sur les courtiers.
+
+    Un débit bancaire de X € suivi (jusqu'à `max_days` jours après, ou `early_days` avant : le courtier
+    date parfois la réception avant l'écriture bancaire) d'un versement de X € (±1 %)
+    sur un compte d'investissement devient « Épargne & investissement », avec le compte destinataire
+    dans `linked_account`. Même logique pour un retrait du courtier crédité sur la banque.
+    Les corrections manuelles ne sont jamais modifiées.
+    """
+    df = tx.copy()
+    df["linked_account"] = None
+    if df.empty or trades.empty:
+        return df
+    inv = set(accounts.loc[accounts["type"].isin(INVEST_TYPES), "id"])
+    moves = trades[trades["account_id"].isin(inv) & trades["kind"].isin(["deposit", "withdrawal"])].copy()
+    if moves.empty:
+        return df
+    moves["date"] = pd.to_datetime(moves["date"])
+    names = accounts.set_index("id")["name"].to_dict()
+    used: set = set()
+    cand = df[df["category"].isin(LINKABLE) & (df["source_cat"] != "manuel")].sort_values("date")
+    for i, r in cand.iterrows():
+        want = "deposit" if r["amount"] < 0 else "withdrawal"
+        m = moves[(moves["kind"] == want) & ~moves["id"].isin(used)]
+        delta = (m["date"] - r["date"]).dt.days if want == "deposit" else (r["date"] - m["date"]).dt.days
+        tol = max(1.5, abs(r["amount"]) * 0.01)
+        hit = m[(delta >= -early_days) & (delta <= max_days) & ((m["amount"].abs() - abs(r["amount"])).abs() <= tol)]
+        if hit.empty:
+            continue
+        # Priorité au courtier nommé dans le libellé (« VIR INST IBKR »), puis au plus proche dans le temps.
+        label = norm(f"{r['label']} {r.get('merchant', '')}")
+        named = hit["account_id"].map(lambda a: any(norm(w) in label for w in _aliases(a, names, accounts)))
+        gap = (hit["date"] - r["date"]).dt.days.abs()
+        best = hit.loc[(gap - named.astype(int) * 100).idxmin()]
+        used.add(best["id"])
+        df.at[i, "category"] = "Épargne & investissement"
+        df.at[i, "cat_type"] = "transfer"
+        df.at[i, "source_cat"] = "rapprochement"
+        df.at[i, "linked_account"] = names.get(best["account_id"], best["account_id"])
+    return df
+
+
+ALIASES = {"interactive brokers": ["ibkr", "interactive"], "trade republic": ["trade republic", "traderepublic"],
+           "binance": ["binance"], "boursorama": ["boursorama", "boursobank"]}
+
+
+def _aliases(account_id: str, names: dict, accounts: pd.DataFrame) -> list[str]:
+    inst = accounts.set_index("id")["institution"].get(account_id, "") or ""
+    base = [w for w in (names.get(account_id, ""), inst) if w and len(w) > 3]
+    return base + ALIASES.get(str(inst).lower(), [])

@@ -35,12 +35,14 @@ class Bundle:
 def load(db: DB, today: date | None = None) -> Bundle:
     from . import config
 
+    config.set_active(db.path.parent)
     accounts = db.table("accounts")
     raw_tx = db.table("cash_transactions")
     overrides = db.table("category_overrides")
-    tx = budget.classify(raw_tx, overrides, dict(zip(accounts["id"], accounts["type"])))
-    vacations = db.read("SELECT * FROM vacations ORDER BY start")
     trades = db.table("trades")
+    tx = budget.classify(raw_tx, overrides, dict(zip(accounts["id"], accounts["type"])))
+    tx = budget.link_investments(tx, trades, accounts)
+    vacations = db.read("SELECT * FROM vacations ORDER BY start")
     snaps = db.table("position_snapshots")
     instruments = db.table("instruments")
     prices = db.table("prices")

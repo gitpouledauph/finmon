@@ -276,3 +276,39 @@ def test_binance_transactions_french_converts(tmp_path):
     assert sol["amount"].iloc[0] == pytest.approx(-1000 / 1.25)       # jambes à 1 s d'écart regroupées
     assert not [w for w in warn if "supérieure" in w]                 # historique complet : pas de vente à découvert
     assert t[t["kind"] == "deposit"]["amount"].sum() == 99
+
+
+def test_boursorama_export_operations_fr_and_broker_link(tmp_path):
+    from finmon.analytics import budget
+
+    db = DB(tmp_path / "t.db")
+    df = read_csv_auto(FIX / "boursorama_export_operations_fr.csv")
+    assert boursorama.detect(df) == "operations"
+    n = boursorama.import_operations(db, df, source="ops.csv")
+    tx = db.read("SELECT account_id, label, merchant, amount FROM cash_transactions")
+    assert n == 5
+    assert tx.set_index("label").loc["CARTE 19/02/26 EPICERIE DU COIN", "amount"] == pytest.approx(-12.40)  # 1re « Solde »
+    assert tx.set_index("label").loc["CARTE 17/02/26 LIBRAIRIE CENTRALE", "merchant"] == "LIBRAIRIE CENTRALE"
+    acc = db.read("SELECT id, name, type FROM accounts").set_index("id")
+    assert acc.loc["bourso:4999********0000", "name"].startswith("Carte Ultim")
+    bal = db.read("SELECT account_id, balance FROM balance_snapshots").set_index("account_id")["balance"]
+    assert bal["bourso:00040000000"] == pytest.approx(2500.0) and bal["bourso:4999********0000"] == pytest.approx(-35.80)
+
+    accounts = pd.concat([db.read("SELECT * FROM accounts"), pd.DataFrame([{
+        "id": "ibkr", "institution": "Interactive Brokers", "name": "Interactive Brokers", "type": "cto", "currency": "EUR"}])])
+    cl = budget.classify(db.read("SELECT * FROM cash_transactions"), None, dict(zip(accounts["id"], accounts["type"])))
+    cats = cl.set_index("label")["category"]
+    assert cats["Relevé différé Carte 4999********0000"] == "Virements internes"   # pas compté deux fois
+    trades = pd.DataFrame([{"id": "d1", "account_id": "ibkr", "date": "2026-03-04", "kind": "deposit", "amount": 500.0}])
+    linked = budget.link_investments(cl, trades, accounts).set_index("label")
+    assert linked.loc["VIR INST DUPONT JEAN", "category"] == "Épargne & investissement"
+    assert linked.loc["VIR INST DUPONT JEAN", "linked_account"] == "Interactive Brokers"
+
+
+def test_simulation_projection():
+    from finmon.analytics import simulation as sim
+
+    p = sim.project(1000.0, 0.10, None, 10)
+    assert p["central"] == pytest.approx(1000 * 1.1 ** 10)
+    q = sim.project(1000.0, 0.10, 0.2, 10, monthly=100)
+    assert q["low"] < q["central"] < q["high"] and q["invested"] == 1000 + 100 * 120

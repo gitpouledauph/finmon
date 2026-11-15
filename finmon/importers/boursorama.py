@@ -36,7 +36,7 @@ CCY_RE = re.compile(r"\b(\d+[.,]\d{2})\s?(USD|GBP|CHF|JPY|CAD|AUD|SEK|NOK|DKK|PL
 # Détection
 # --------------------------------------------------------------------------
 def detect(df: pd.DataFrame) -> str | None:
-    if pick(df, "dateOp", "Date opération", "Date operation") and pick(df, "amount", "montant") and pick(df, "label", "libellé"):
+    if pick(df, "dateOp", "Date opération", "Date operation") and _amount_and_balance(df)[0] and pick(df, "label", "libellé"):
         if not pick(df, "quantité", "quantity", "qté"):
             return "operations"
     if pick(df, "quantité", "quantity", "qté", "nombre"):
@@ -82,10 +82,15 @@ def guess_account_type(label: str) -> str:
 
 def _account_row(num: str, label: str, inst: str = "Boursorama") -> dict:
     conf = config.settings()["accounts"].get(str(num), {})
+    is_card = "*" in str(num)  # « 4999********0000 » : carte à débit différé, suivie comme un compte
+    default = (f"Carte {label.strip().title()} (débit différé)" if is_card and label
+               else label.strip() if label else f"Compte {num}")
+    if label and label.strip().lower() == "boursobank":
+        default = "Compte courant BoursoBank"
     return {
         "id": f"bourso:{num}",
         "institution": inst,
-        "name": conf.get("name") or (label.strip() if label else f"Compte {num}"),
+        "name": conf.get("name") or default,
         "type": conf.get("type") or guess_account_type(label),
         "currency": conf.get("currency", "EUR"),
     }
@@ -95,6 +100,7 @@ def clean_merchant(label: str) -> str:
     s = str(label).upper()
     s = re.sub(r"^(CARTE|CB|PAIEMENT CB|PRLV SEPA|PRLV|VIR(EMENT)? SEPA( INST)?( RECU| EMIS)?|VIR(EMENT)?|AVOIR)\s+", "", s)
     s = re.sub(r"^\d{2}/\d{2}(/\d{2,4})?\s+", "", s)
+    s = re.sub(r"\s+CB\*\d+\s*$", "", s)
     s = re.sub(r"\bCB\*\d+.*$", "", s)
     s = CCY_RE.sub("", s)
     s = re.sub(r"1 EURO? ?=.*$", "", s)
@@ -102,17 +108,29 @@ def clean_merchant(label: str) -> str:
     return s[:40]
 
 
+def _amount_and_balance(df: pd.DataFrame) -> tuple[str | None, str | None]:
+    """Colonne du montant et du solde du compte.
+
+    Export anglais : amount / accountbalance. Export français (« export-operations-… ») :
+    deux colonnes « Solde » — la PREMIÈRE est le montant de l'opération (format 1 234,56),
+    la seconde le solde du compte (lue par pandas comme « Solde.1 »)."""
+    amt = pick(df, "amount", "montant")
+    bal = pick(df, "accountbalance")
+    if amt is None and "Solde" in df.columns and "Solde.1" in df.columns:
+        return "Solde", "Solde.1"
+    return amt, bal or pick(df, "solde")
+
+
 def import_operations(db: DB, df: pd.DataFrame, source: str = "") -> int:
     c_date = pick(df, "dateOp", "Date opération", "Date operation", "date")
     c_vdate = pick(df, "dateVal", "Date valeur")
     c_label = pick(df, "label", "libellé", "libelle")
-    c_amount = pick(df, "amount", "montant")
+    c_amount, c_bal = _amount_and_balance(df)
     c_cat = pick(df, "category", "catégorie")
     c_parent = pick(df, "categoryParent", "catégorie parente")
-    c_supplier = pick(df, "supplierFound", "fournisseur")
-    c_num = pick(df, "accountNum", "numéro de compte", "compte")
+    c_supplier = pick(df, "supplierFound", "fournisseur", "libellé suggéré")
+    c_num = pick(df, "accountNum", "numéro de compte", "numéro compte", "compte")
     c_alabel = pick(df, "accountLabel", "libellé compte")
-    c_bal = pick(df, "accountbalance", "solde")
 
     out = pd.DataFrame(
         {
@@ -137,9 +155,9 @@ def import_operations(db: DB, df: pd.DataFrame, source: str = "") -> int:
     db.upsert("accounts", pd.DataFrame(list(accounts)), mode="replace")
 
     out["account_id"] = "bourso:" + out["num"]
-    out["merchant"] = [
-        (s.upper() if s else clean_merchant(l)) for s, l in zip(out["supplier"], out["label"])
-    ]
+    # « Libellé suggéré » : nom propre du marchand quand Boursorama le reconnaît, sinon le libellé brut.
+    out["merchant"] = [clean_merchant(s if isinstance(s, str) and s.strip() else l)
+                       for s, l in zip(out["supplier"], out["label"])]
     out["foreign_currency"] = out["label"].str.extract(CCY_RE)[1]
     out["source"] = source
     out["id"] = stable_ids(

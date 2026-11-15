@@ -29,14 +29,25 @@ categories:
   À classer: {type: expense}
   Salaire: {type: income}
   Autres revenus: {type: income}
+  Remboursements entre amis: {type: expense}   # Lydia, virements entre amis : se compensent
+  Aide familiale: {type: income}
   Virements internes: {type: transfer}
-  Épargne & investissement: {type: transfer}
+  Épargne livrets: {type: transfer}             # vers / depuis les livrets : épargne nette
+  Épargne & investissement: {type: transfer}    # vers les courtiers (rapprochés automatiquement)
 
 # Règles sur le libellé (insensible à la casse). La première qui matche gagne.
+#
+# « sign: debit » ou « sign: credit » limite une règle aux sorties ou aux entrées d'argent.
+# Des règles personnelles (noms de personnes, comptes) peuvent être ajoutées dans
+# data/<profil>/regles.yaml : elles passent avant celles-ci et restent sur votre machine.
 rules:
+  # Carte à débit différé : le prélèvement mensuel du total ne doit pas compter une 2e fois.
+  - {pattern: "RELEV[EÉ] DIFF[EÉ]R[EÉ]|DEBIT DIFFERE CARTE|PRLV CARTE DIFFERE", category: Virements internes}
   - {pattern: "SALAIRE|PAIE |REMUNERATION", category: Salaire}
-  - {pattern: "TRADE REPUBLIC|BOURSORAMA.*(PEA|BOURSE)|VERS(EMENT)? PEA|ASSURANCE VIE|LINXEA|YOMONI|BINANCE|REVOLUT", category: Épargne & investissement}
-  - {pattern: "VIR(EMENT)? (INTERNE|PERMANENT).*(LIVRET|LDD|LEP|EPARGNE)|LIVRET A|LDDS|VIR.*VERS (MON|LIVRET)", category: Virements internes}
+  - {pattern: "PRIME PARRAINAGE|PARRAINAGE", category: Autres revenus, sign: credit}
+  - {pattern: "TDF EMIS VIA CB|LYDIA|PAYLIB|SUMERIA|WERO", category: Remboursements entre amis}
+  - {pattern: "TRADE REPUBLIC|BOURSORAMA.*(PEA|BOURSE)|VERS(EMENT)? PEA|ASSURANCE VIE|LINXEA|YOMONI|BINANCE|REVOLUT|\\bIBKR\\b|INTERACTIVE BROKERS|DEGIRO|FORTUNEO BOURSE", category: Épargne & investissement}
+  - {pattern: "LIVRET|\\bLDDS?\\b|\\bLEP\\b|\\bCEL\\b|\\bPEL\\b|VIR.*VERS (MON|LIVRET)", category: Épargne livrets}
   - {pattern: "DGFIP|IMPOT|TRESOR PUBLIC|TAXE (FONCIERE|HABITATION)|AMENDE", category: Impôts & taxes}
   - {pattern: "LOYER|FONCIA|NEXITY|EDF|ENGIE|TOTALENERGIES ELEC|EAU DE|SYNDIC", category: Logement}
   - {pattern: "AXA|MAIF|MACIF|MATMUT|ALLIANZ|GENERALI|ASSURANCE|ALAN|MUTUELLE", category: Assurances}
@@ -48,6 +59,13 @@ rules:
   - {pattern: "PHARMA|DOCTOLIB|MEDECIN|DENTISTE|OPTIC|LABO|HOPITAL|KINE|CPAM", category: Santé}
   - {pattern: "FNAC|DARTY|AMAZON|ZARA|H&M|UNIQLO|DECATHLON|IKEA|LEROY MERLIN|SEPHORA|ZALANDO|VINTED|CELIO|APPLE STORE", category: Shopping}
   - {pattern: "CINEMA|UGC|PATHE|MK2|THEATRE|CONCERT|FNAC SPECTACLE|TICKETMASTER|MUSEE|SALLE DE SPORT|BASIC FIT|FITNESS|STEAM|PLAYSTATION", category: Loisirs & culture}
+  - {pattern: "\\bVOI\\b|\\bPONY\\b|\\bDOTT\\b|\\bTIER\\b|\\bGRAB\\b|\\bMOBO\\b|GETAROUND|BLABLACAR|MAX JEUNE|TGV ?MAX|FLIXBUS", category: Transports}
+  - {pattern: "VOLOTEA|WIZZ|ITA AIRWAYS|BRITISH AIRWAYS|KLM|IBERIA|TAP AIR|SKYSCANNER|OPODO|MYTRIP|EDREAMS|HOSTELWORLD|GETYOURGUIDE", category: Voyages}
+  - {pattern: "NOUS ANTI|\\bNEAG\\b|TOO ?GOOD ?TO ?GO|LA GRANDE EPICERIE|CARREFOUR CITY|SPAR |COOP ", category: Alimentation}
+  - {pattern: "SUNDAY\\*|ZENCHEF|THEFORK|LA FOURCHETTE|COFFEE|KAFFE|BAKERY", category: Restaurants & bars}
+  - {pattern: "TRADING ?212", category: Épargne & investissement}
+  - {pattern: "EGYM|WELLPASS|GYMLIB|CLASSPASS|SHOTGUN|BILLETREDUC|FNAC BILLET|DICE\\.FM", category: Loisirs & culture}
+  - {pattern: "LIBRAIRIE CENTRALE|CONVERSE|NIKE|ADIDAS|AIME LEON DORE|COS |UNIQLO|VEEPEE|VINTED|ZARA", category: Shopping}
   - {pattern: "RETRAIT DAB|RET DAB|RETRAIT ", category: Retraits espèces}
   - {pattern: "COTISATION|FRAIS |COMMISSION|AGIOS|INTERETS DEBITEURS", category: Banque & frais}
   - {pattern: "DON |CROIX ROUGE|UNICEF|MSF|LEETCHI|CAGNOTTE", category: Cadeaux & dons}
@@ -91,6 +109,24 @@ bank_mapping:
   education: Éducation
   enfant: Éducation
   retrait: Retraits espèces
+  # Sous-catégories Boursorama (export « export-operations »)
+  vetements: Shopping
+  electronique: Shopping
+  livres: Shopping
+  mobilier: Shopping
+  bricolage: Shopping
+  bien etre: Santé
+  coiffeur: Santé
+  laverie: Autres dépenses
+  animaux: Autres dépenses
+  entretien reparation: Transports
+  peages: Transports
+  parking: Transports
+  contraventions: Transports
+  auto moto: Transports
+  services financiers: Banque & frais
+  autres depenses: Autres dépenses
+  vie quotidienne autres: Autres dépenses
   especes: Retraits espèces
   salaire: Salaire
   revenu: Autres revenus

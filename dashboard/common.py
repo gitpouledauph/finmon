@@ -36,6 +36,11 @@ def _load(db_path: str, mtime: float, today: str):
 def bundle() -> Bundle:
     db = get_db()
     mtime = db.path.stat().st_mtime if db.path.exists() else 0.0
+    # Les règles de classement du profil comptent aussi : les modifier recalcule le tableau de bord.
+    for f in ("regles.yaml", "regles_auto.yaml"):
+        p = db.path.parent / f
+        if p.exists():
+            mtime += p.stat().st_mtime
     return _load(str(db.path), mtime, date.today().isoformat())
 
 

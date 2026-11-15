@@ -97,7 +97,24 @@ et `portfolio.csv` (`Name;ISIN;quantity;price;avgCost;netValue`). Ces deux fichi
 
 ## Boursorama / BoursoBank
 
-- **Opérations de compte** (courant, livrets) : `dateOp;dateVal;label;category;categoryParent;supplierFound;amount;comment;accountNum;accountLabel;accountbalance`.
+- **Opérations de compte** (courant, livrets, carte à débit différé), deux variantes :
+  - anglaise : `dateOp;dateVal;label;category;categoryParent;supplierFound;amount;comment;accountNum;accountLabel;accountbalance` ;
+  - française (`export-operations-JJ-MM-AAAA_….csv`, tous les comptes dans un fichier) :
+    `Date Opération;Date Valeur;Libellé;Libellé Suggéré;Catégorie;Catégorie Parente;Solde;Commentaire;Numéro Compte;Libellé Compte;Solde;Pointage`.
+    Attention : **la première colonne « Solde » est le montant de l'opération** (`-1 234,56`), la seconde le
+    solde du compte (`1234.56`). « Libellé Suggéré » donne le nom propre du marchand.
+
+  **Carte à débit différé** (ex. carte Ultim) : elle apparaît comme un compte à part (« Numéro Compte » masqué
+  `4999********0000`) avec chaque paiement. Le compte courant porte, une fois par mois, une ligne
+  « Relevé différé Carte … » égale au total : elle est classée en virement interne pour ne pas compter
+  les dépenses deux fois.
+
+  **Classement** : règles génériques (`config/categories.yaml`), puis règles personnelles du profil
+  (`data/<profil>/regles.yaml` : noms du propriétaire, des colocataires, de l'employeur… jamais versionné),
+  puis règles créées depuis le dashboard (`regles_auto.yaml`, case « Règle » de la page Dépenses).
+  Les virements vers les courtiers sont **rapprochés** des versements reçus par IBKR, Trade Republic, Binance
+  (même montant ±1 %, 3 jours avant à 7 jours après) et classés en « Épargne & investissement ».
+  Les loyers versés/reçus à partir du 25 comptent pour le mois suivant (`settings.yaml › logement_mois_suivant_apres`).
 - **Positions PEA/CTO — « positions comptables »** (*Bourse › Mon portefeuille › Exporter*,
   fichier `export-positions-comptables-JJ-MM-AAAA_HH-MM-SS.csv`) :
 

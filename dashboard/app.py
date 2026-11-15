@@ -12,9 +12,11 @@ theme.apply()
 
 P = {
     "accueil": st.Page("views/accueil.py", title="Patrimoine", icon=":material/space_dashboard:", default=True),
+    "simulation": st.Page("views/simulation.py", title="Simulation", icon=":material/insights:"),
     "saisie": st.Page("views/saisie.py", title="Saisir une opération", icon=":material/edit_note:"),
     "investissements": st.Page("views/investissements.py", title="Performance", icon=":material/show_chart:"),
     "allocation": st.Page("views/allocation.py", title="Allocation & exposition", icon=":material/donut_large:"),
+    "mois": st.Page("views/mois.py", title="Bilan du mois", icon=":material/calendar_month:"),
     "depenses": st.Page("views/depenses.py", title="Dépenses", icon=":material/receipt_long:"),
     "vacances": st.Page("views/vacances.py", title="Vacances", icon=":material/flight:"),
     "revenus": st.Page("views/revenus.py", title="Revenus & épargne", icon=":material/savings:"),
@@ -22,8 +24,8 @@ P = {
 }
 pages = {
     "Synthèse": [P["accueil"]],
-    "Investissement": [P["investissements"], P["allocation"], P["saisie"]],
-    "Analyse des dépenses": [P["depenses"], P["revenus"], P["vacances"]],
+    "Investissement": [P["investissements"], P["allocation"], P["simulation"], P["saisie"]],
+    "Analyse des dépenses": [P["mois"], P["depenses"], P["revenus"], P["vacances"]],
     "Données": [P["donnees"]],
 }
 

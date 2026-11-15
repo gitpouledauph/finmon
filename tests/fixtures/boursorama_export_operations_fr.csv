@@ -1,0 +1,6 @@
+﻿"Date Opération";"Date Valeur";Libellé;"Libellé Suggéré";Catégorie;"Catégorie Parente";Solde;Commentaire;"Numéro Compte";"Libellé Compte";Solde;Pointage
+2026-03-02;2026-03-02;"Relevé différé Carte 4999********0000";"Relevé Différé Carte 4999********0000";"Mouvements internes débiteurs";"Mouvements internes débiteurs";"-1 450,00";;00040000000;BoursoBank;2500.00;Non
+2026-03-02;2026-03-02;"VIR INST DUPONT JEAN";"Vir Inst Dupont Jean";"Virements émis";"Virements émis";-500,00;;00040000000;BoursoBank;3950.00;Non
+2026-02-27;2026-02-27;"VIR SEPA EMPLOYEUR SA";"Vir Sepa Employeur Sa";"Virements reçus";"Virements reçus";"4 000,00";;00040000000;BoursoBank;4450.00;Non
+2026-02-20;2026-02-20;"CARTE 19/02/26 EPICERIE DU COIN";Franprix;Alimentation;"Vie quotidienne";-12,40;;4999********0000;ULTIM;-35.80;Non
+2026-02-18;2026-02-18;"CARTE 17/02/26 LIBRAIRIE CENTRALE";"CARTE 17/02/26 LIBRAIRIE CENTRALE";"Non catégorisé";"Non catégorisé";-522,00;;4999********0000;ULTIM;-25.43;Non

@@ -28,6 +28,10 @@ taux_reglementes:
 #     type: livret
 accounts: {}
 
+# Loyers versés ou reçus à partir de ce jour du mois : comptés sur le mois suivant (le mois qu'ils
+# couvrent). 0 pour désactiver.
+logement_mois_suivant_apres: 25
+
 # Catégories « fixes » exclues du coût des vacances (elles tombent pendant
 # un voyage mais n'en font pas partie).
 vacation_excluded_categories:

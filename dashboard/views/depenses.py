@@ -94,12 +94,15 @@ if q:
     view = view[view["label"].str.contains(q, case=False, regex=False)]
 view = view.head(500)
 ed = st.data_editor(
-    view[["id", "date", "label", "amount", "category", "vacation_tag", "source_cat"]].rename(columns={
-        "date": "Date", "label": "Libellé", "amount": "Montant", "category": "Catégorie",
-        "vacation_tag": "Vacances", "source_cat": "Origine"}),
-    hide_index=True, width="stretch", disabled=["id", "Date", "Libellé", "Montant", "Origine"],
+    view[["id", "date", "label", "merchant", "amount", "category", "vacation_tag", "source_cat"]].rename(columns={
+        "date": "Date", "label": "Libellé", "merchant": "Marchand", "amount": "Montant", "category": "Catégorie",
+        "vacation_tag": "Vacances", "source_cat": "Origine"}).assign(Règle=False),
+    hide_index=True, width="stretch", disabled=["id", "Date", "Libellé", "Marchand", "Montant", "Origine"],
     column_config={
         "id": None,
+        "Règle": st.column_config.CheckboxColumn(
+            help="Coché : la catégorie choisie s'appliquera automatiquement à toutes les opérations de ce "
+                 "marchand, y compris aux prochains imports."),
         "Date": st.column_config.DateColumn(format="DD/MM/YYYY"),
         "Montant": st.column_config.NumberColumn(format="%.2f €"),
         "Catégorie": st.column_config.SelectboxColumn(options=cats, required=True),
@@ -116,10 +119,22 @@ if st.button("Enregistrer les corrections", type="primary"):
         if cat_changed or vac_changed:
             changed.append({"tx_id": r.id, "category": r.Catégorie if (cat_changed or o["source_cat"] == "manuel") else None,
                             "vacation": vac})
-    if changed:
-        get_db().upsert("category_overrides", pd.DataFrame(changed), mode="replace")
+    import re as _re
+
+    from finmon import config as _config
+
+    rules = 0
+    for r in ed[ed["Règle"]].itertuples(index=False):
+        merchant = str(r.Marchand or "").strip()
+        if len(merchant) >= 3:
+            o = orig.loc[r.id]
+            _config.add_auto_rule(_re.escape(merchant), r.Catégorie, "debit" if o["amount"] < 0 else "credit")
+            rules += 1
+    if changed or rules:
+        if changed:
+            get_db().upsert("category_overrides", pd.DataFrame(changed), mode="replace")
         invalidate()
-        st.success(f"{len(changed)} correction(s) enregistrée(s).")
+        st.success(f"{len(changed)} correction(s) enregistrée(s)" + (f", {rules} règle(s) créée(s)" if rules else "") + ".")
         st.rerun()
     else:
         st.info("Aucune modification.")
