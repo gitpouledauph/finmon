@@ -13,6 +13,9 @@ order; ask the user only for what you cannot read from their files.
 
 ## 1. Install
 
+Python **3.11+** is required (`python3 --version`). On macOS install one if needed (`brew install python@3.13`)
+and use `python3.13` below.
+
 ```bash
 git clone https://github.com/gitpouledauph/finmon.git meridian && cd meridian
 python3 -m venv .venv-finmon && source .venv-finmon/bin/activate

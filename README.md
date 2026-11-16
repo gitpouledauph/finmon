@@ -37,7 +37,9 @@ python -m finmon demo          # optional: synthetic data to explore every page
 python -m finmon dashboard     # opens http://localhost:8501
 ```
 
-Requires Python 3.11+ (tested on 3.13). In the sidebar, switch between **Personal** and **Demo** profiles.
+Requires **Python 3.11+** (tested on 3.13). Check with `python3 --version`; on macOS the system Python is too old —
+install a recent one (`brew install python@3.13`) and create the venv with `python3.13 -m venv .venv-finmon`.
+In the sidebar, switch between **Personal** and **Demo** profiles.
 
 ## Documentation
 
