@@ -6,7 +6,7 @@ from finmon import charts
 from finmon.analytics import budget
 
 b = bundle()
-st.title("Dépenses")
+st.title("Spending")
 tx = b.tx
 if tx.empty:
     empty_state("opérations bancaires")
@@ -47,7 +47,7 @@ rate = flows["savings"].sum() / flows["income"].sum() if flows["income"].sum() e
 c[3].metric("Taux d'épargne", f"{rate * 100:.0f} %" if rate is not None else "—")
 
 # ------------------------------------------------------------- graphes
-st.subheader("Dépenses par catégorie")
+st.subheader("By category")
 if gran == "Année":
     piv = e_all.pivot_table(index="year", columns="category", values="spend", aggfunc="sum", fill_value=0.0)
     piv.index = piv.index.astype(str)
@@ -62,19 +62,19 @@ plot(charts.stacked_bars(grouped, colors=cmap), key="stack")
 
 l, r = st.columns(2)
 with l:
-    st.subheader("Répartition")
+    st.subheader("Breakdown")
     by_cat = e.groupby("category")["spend"].sum().sort_values(ascending=False)
     by_cat = by_cat[by_cat > 0]
     share = by_cat / by_cat.sum()
     plot(charts.hbar(by_cat.index, by_cat.values, color=[cmap.get(c, charts.OTHER) for c in by_cat.index],
                      text=[f"{eur(v)} · {s * 100:.0f} %" for v, s in zip(by_cat.values, share.values)]), key="cat")
 with r:
-    st.subheader("Principaux marchands")
+    st.subheader("Top merchants")
     by_m = e.groupby("merchant")["spend"].agg(["sum", "count"]).sort_values("sum", ascending=False).head(15)
     plot(charts.hbar(by_m.index, by_m["sum"], text=[f"{eur(v)} · {n} op." for v, n in zip(by_m["sum"], by_m["count"])]),
          key="merch")
 
-st.subheader("Carte de chaleur catégorie × mois")
+st.subheader("Category × month")
 hm = e.pivot_table(index="category", columns="month", values="spend", aggfunc="sum", fill_value=0.0)
 hm = hm.loc[hm.sum(axis=1).sort_values(ascending=False).index]
 plot(charts.heatmap(hm.clip(lower=0)), key="heat")
@@ -88,14 +88,12 @@ cats = sorted(budget.category_types().keys())
 vac_names = [""] + b.vacations["name"].tolist()
 real = t[~t["source_cat"].isin(["loyer fixe", "ajustement", "étalé"])]
 todo = real[real["source_cat"] == "défaut"]
-tab_todo, tab_all = st.tabs([f"À classer ({len(todo)})", "Toutes les opérations"])
+tab_todo, tab_all = st.tabs([f"To classify ({len(todo)})", "All transactions"])
 
 with tab_todo:
-    st.caption("Opérations qu'aucune règle ne reconnaît : elles sont comptées en « Autres dépenses » "
-               "(ou « Autres revenus »). Choisissez une catégorie par marchand dans le menu déroulant : "
-               "toutes ses opérations sont reclassées, et il sera reconnu automatiquement aux prochains imports.")
+    pass
     if todo.empty:
-        st.success("Tout est classé.")
+        st.success("Everything is classified.")
     else:
         g = (todo.assign(sens=todo["amount"].lt(0).map({True: "debit", False: "credit"}))
              .groupby(["merchant", "sens"])
@@ -111,7 +109,7 @@ with tab_todo:
                 "Total": st.column_config.NumberColumn(format="%+,.2f €"),
                 "Dernière": st.column_config.DateColumn(format="DD/MM/YYYY"),
                 "Exemple": st.column_config.TextColumn(width="large")})
-        if st.button("Enregistrer le classement", type="primary", key="save_todo"):
+        if st.button("Save", type="primary", key="save_todo"):
             n = 0
             for r in ged.itertuples(index=False):
                 default = "Autres dépenses" if r.sens == "debit" else "Autres revenus"
@@ -120,16 +118,14 @@ with tab_todo:
                     n += 1
             if n:
                 invalidate()
-                st.success(f"{n} marchand(s) classé(s) : règles enregistrées.")
+                st.success(f"{n} merchant rule(s) saved.")
                 st.rerun()
             else:
-                st.info("Aucune catégorie modifiée.")
+                st.info("No change.")
 
 with tab_all:
-    st.caption("Corrigez une catégorie ou rattachez une dépense à des vacances (ex. billet d'avion acheté à "
-               "l'avance). Cochez « Règle » pour appliquer la catégorie à tout le marchand, y compris aux "
-               "prochains imports.")
-    q = st.text_input("Rechercher un libellé", "")
+    pass
+    q = st.text_input("Search", "")
     view = t_sel[~t_sel["source_cat"].isin(["loyer fixe", "ajustement", "étalé"])].sort_values("date", ascending=False)
     if q:
         view = view[view["label"].str.contains(q, case=False, regex=False)]
@@ -154,7 +150,7 @@ with tab_all:
             "Catégorie": st.column_config.SelectboxColumn(options=cats, required=True),
             "Vacances": st.column_config.SelectboxColumn(options=vac_names),
         }, key="editor")
-    if st.button("Enregistrer les corrections", type="primary"):
+    if st.button("Save corrections", type="primary"):
         orig = view.set_index("id")
         changed = []
         for r in ed.itertuples(index=False):
@@ -190,5 +186,5 @@ with tab_all:
             st.success(f"{len(changed)} correction(s) enregistrée(s)" + (f", {rules} règle(s) créée(s)" if rules else "") + ".")
             st.rerun()
         else:
-            st.info("Aucune modification.")
+            st.info("No change.")
 download_df(t_sel.drop(columns=["month"]).set_index("date"), "operations")

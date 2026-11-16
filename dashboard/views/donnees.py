@@ -7,14 +7,14 @@ import streamlit as st
 
 from common import ROOT, bundle, config, dismissed_alerts, get_db, invalidate, profile_name, set_dismissed
 
-st.title("Données & imports")
+st.title("Data & imports")
 profile = config.get_profile(profile_name())
 db = get_db()
 if profile.name == "demo":
     st.warning("Vous êtes sur le profil **Démo**. Repassez sur « Mes données » dans la barre latérale pour importer vos fichiers.")
 
 tab_imp, tab_inst, tab_state, tab_exp = st.tabs(
-    ["Import historique", "Titres", "État des données", "Export"])
+    ["Import", "Securities", "Status", "Export"])
 
 # ------------------------------------------------------------- import historique
 with tab_imp:
@@ -24,14 +24,14 @@ with tab_imp:
         "**Une seule fois** : importez l'historique de chaque compte. Ensuite, ajoutez vos nouvelles opérations "
         "dans **Saisir une opération** — plus aucune connexion n'est nécessaire. "
         "Le format est reconnu automatiquement et ré-importer un fichier ne crée pas de doublons.")
-    with st.expander("Quel fichier pour chaque compte ?", expanded=True):
+    with st.expander("Which file for each account (FR)", expanded=True):
         st.markdown((ROOT / "docs" / "GUIDE_CSV.md").read_text(encoding="utf-8"))
     st.download_button("Modèle CSV finmon (pour tout autre courtier ou une saisie en masse)",
                        manual.template_csv().encode("utf-8-sig"), file_name="modele-finmon.csv", mime="text/csv")
     hint = st.radio("Pour un fichier Boursorama de titres (positions / mouvements), il s'agit du…",
                     ["PEA", "Compte-titres (CTO)"], horizontal=True)
     files = st.file_uploader("Fichiers CSV ou Excel", type=["csv", "txt", "xlsx"], accept_multiple_files=True)
-    if files and st.button("Importer", type="primary"):
+    if files and st.button("Import", type="primary"):
         from finmon.sync import import_any
 
         with st.spinner("Import (les cours historiques sont téléchargés pour valoriser crypto et devises)…"):
@@ -55,7 +55,7 @@ with tab_imp:
         warn = db.read("SELECT file, message FROM import_log WHERE status IN ('warning','error') "
                        "ORDER BY ts DESC LIMIT 10")
         if not warn.empty:
-            with st.expander("Points d'attention de l'import"):
+            with st.expander("Import warnings"):
                 st.dataframe(warn, hide_index=True, width="stretch")
     st.divider()
     st.markdown(f"Autre possibilité : copier les fichiers dans `{profile.inbox}` puis cliquer :")
@@ -88,7 +88,7 @@ with tab_inst:
                             column_config={"asset_class": st.column_config.SelectboxColumn(
                                 options=["Actions", "Obligations", "Monétaire", "Crypto", "Matières premières", "Immobilier"])},
                             key="inst_editor")
-        if st.button("Enregistrer les titres"):
+        if st.button("Save securities"):
             bad = []
             for c in ("exposure", "regions", "sectors"):
                 for v, isin in zip(ed[c], ed["isin"]):
@@ -110,17 +110,17 @@ with tab_inst:
 # ------------------------------------------------------------- état
 with tab_state:
     b = bundle()
-    st.markdown("**Comptes**")
+    st.markdown("**Accounts**")
     tx = db.read("SELECT account_id, MIN(date) AS debut, MAX(date) AS fin, COUNT(*) AS operations FROM cash_transactions GROUP BY account_id")
     tr = db.read("SELECT account_id, MIN(date) AS debut, MAX(date) AS fin, COUNT(*) AS operations FROM trades GROUP BY account_id")
     acc = b.accounts.rename(columns={"id": "account_id"})
     st.dataframe(acc.merge(pd.concat([tx, tr]), on="account_id", how="left"), hide_index=True, width="stretch")
     last_px = db.read("SELECT MAX(date) AS d FROM prices")["d"][0]
     st.write(f"Derniers cours en base : **{last_px or '—'}**")
-    st.markdown("**Journal des imports**")
+    st.markdown("**Import log**")
     st.dataframe(b.import_log, hide_index=True, width="stretch")
     hidden = dismissed_alerts()
-    st.markdown(f"**Alertes masquées** ({len(hidden)})")
+    st.markdown(f"**Hidden alerts** ({len(hidden)})")
     if hidden:
         for k, v in hidden.items():
             c1, c2 = st.columns([12, 2], vertical_alignment="center")
@@ -129,14 +129,14 @@ with tab_state:
                 set_dismissed([v["text"]], hide=False)
                 st.rerun()
     else:
-        st.caption("Aucune.")
+        st.caption("None.")
 
 # ------------------------------------------------------------- export
 with tab_exp:
     from finmon.data import export_excel
 
     st.markdown("Exporte positions, opérations classées, dépenses par mois, patrimoine et allocation dans un classeur Excel.")
-    if st.button("Préparer l'export Excel"):
+    if st.button("Build Excel export"):
         buf = io.BytesIO()
         export_excel(bundle(), buf)
         st.download_button("Télécharger", buf.getvalue(), file_name=f"finmon-{datetime.now():%Y%m%d}.xlsx",

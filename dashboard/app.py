@@ -1,53 +1,63 @@
-"""Point d'entrée du dashboard : streamlit run dashboard/app.py"""
+"""Meridian — entry point: streamlit run dashboard/app.py"""
 import time
 
 import streamlit as st
 
-st.set_page_config(page_title="finmon", page_icon=":material/donut_small:", layout="wide")
+st.set_page_config(page_title="Meridian", page_icon=":material/donut_small:", layout="wide",
+                   initial_sidebar_state="expanded")
 
 from common import get_db, invalidate  # noqa: E402
 import theme  # noqa: E402
 
 theme.apply()
+from pathlib import Path  # noqa: E402
+
+_static = Path(__file__).parent / "static"
+st.logo(str(_static / "logo.svg"), size="large", icon_image=str(_static / "icon.svg"))
 
 P = {
-    "accueil": st.Page("views/accueil.py", title="Patrimoine", icon=":material/space_dashboard:", default=True),
-    "simulation": st.Page("views/simulation.py", title="Simulation", icon=":material/insights:"),
-    "saisie": st.Page("views/saisie.py", title="Saisir une opération", icon=":material/edit_note:"),
-    "investissements": st.Page("views/investissements.py", title="Performance", icon=":material/show_chart:"),
-    "allocation": st.Page("views/allocation.py", title="Allocation & exposition", icon=":material/donut_large:"),
-    "globale": st.Page("views/globale.py", title="Vue globale", icon=":material/account_balance_wallet:"),
-    "mois": st.Page("views/mois.py", title="Bilan du mois", icon=":material/calendar_month:"),
-    "depenses": st.Page("views/depenses.py", title="Dépenses", icon=":material/receipt_long:"),
-    "vacances": st.Page("views/vacances.py", title="Vacances", icon=":material/flight:"),
-    "revenus": st.Page("views/revenus.py", title="Revenus & épargne", icon=":material/savings:"),
-    "donnees": st.Page("views/donnees.py", title="Données & imports", icon=":material/database:"),
+    "home": st.Page("views/accueil.py", title="Net worth", icon=":material/space_dashboard:", default=True),
+    "perf": st.Page("views/investissements.py", title="Performance", icon=":material/show_chart:"),
+    "alloc": st.Page("views/allocation.py", title="Allocation", icon=":material/donut_large:"),
+    "fees": st.Page("views/frais.py", title="Fee scanner", icon=":material/percent:"),
+    "proj": st.Page("views/projections.py", title="Projections & goals", icon=":material/flag:"),
+    "sim": st.Page("views/simulation.py", title="Line simulator", icon=":material/insights:"),
+    "entry": st.Page("views/saisie.py", title="Transactions", icon=":material/edit_note:"),
+    "cash": st.Page("views/globale.py", title="Cash flow", icon=":material/account_balance_wallet:"),
+    "month": st.Page("views/mois.py", title="Monthly review", icon=":material/calendar_month:"),
+    "spend": st.Page("views/depenses.py", title="Spending", icon=":material/receipt_long:"),
+    "income": st.Page("views/revenus.py", title="Savings accounts", icon=":material/savings:"),
+    "travel": st.Page("views/vacances.py", title="Travel", icon=":material/flight:"),
+    "data": st.Page("views/donnees.py", title="Data & imports", icon=":material/database:"),
 }
 pages = {
-    "Synthèse": [P["accueil"]],
-    "Investissement": [P["investissements"], P["allocation"], P["simulation"], P["saisie"]],
-    "Analyse des dépenses": [P["globale"], P["mois"], P["depenses"], P["revenus"], P["vacances"]],
-    "Données": [P["donnees"]],
+    "Overview": [P["home"]],
+    "Investments": [P["perf"], P["alloc"], P["fees"], P["proj"], P["sim"], P["entry"]],
+    "Cash flow": [P["cash"], P["month"], P["spend"], P["income"], P["travel"]],
+    "Settings": [P["data"]],
 }
 
 INTERVALS = {"1 min": 60, "5 min": 300, "15 min": 900}
 
 with st.sidebar:
-    st.html("<div class='fm-brand'>fin<span>mon</span></div>")
-    st.caption("Moniteur local — vos données restent sur cette machine.")
-    choice = st.radio("Profil", ["Mes données", "Démo"], horizontal=True,
-                      index=1 if st.session_state.get("profile") == "demo" else 0)
-    new = "demo" if choice == "Démo" else "reel"
+    choice = st.segmented_control("Profile", ["Personal", "Demo"],
+                                  default="Demo" if st.session_state.get("profile") == "demo" else "Personal",
+                                  label_visibility="collapsed") or "Personal"
+    new = "demo" if choice == "Demo" else "reel"
     if new != st.session_state.get("profile"):
         st.session_state["profile"] = new
         invalidate()
     demo = new == "demo"
-
-    live = st.toggle("Cours en direct", value=not demo, disabled=demo,
-                     help="Récupère le dernier cours de vos titres (temps réel pour la crypto, "
-                          "différé ~15 min pour la plupart des bourses) et recalcule valeurs et PnL.")
-    every = INTERVALS[st.select_slider("Actualisation", list(INTERVALS), value="5 min", disabled=not live or demo)]
     st.session_state["_full_run"] = True
+
+with st.sidebar:
+    st.html("<div class='fm-side-sep'></div>")
+    with st.expander("Market data", icon=":material/sync:"):
+        live = st.toggle("Live prices", value=not demo, disabled=demo)
+        every = INTERVALS[st.select_slider("Refresh", list(INTERVALS), value="5 min", disabled=not live or demo)]
+        if st.button("Recompute", width="stretch", icon=":material/refresh:"):
+            invalidate()
+            st.rerun()
 
     if live and not demo:
         @st.fragment(run_every=every)
@@ -63,8 +73,8 @@ with st.sidebar:
                     st.session_state["_live_label"] = hhmm
                     changed = n > 0
                 except Exception as e:  # pas de réseau, quota…
-                    st.session_state["_live_label"] = f"indisponible ({type(e).__name__})"
-            st.caption(f"Derniers cours : {st.session_state.get('_live_label', '—')}")
+                    st.session_state["_live_label"] = f"unavailable ({type(e).__name__})"
+            st.html(f"<div class='fm-live'><span class='dot'></span>Prices · {st.session_state.get('_live_label', '—')}</div>")
             full = st.session_state.get("_full_run", False)
             st.session_state["_full_run"] = False
             if changed and not full:
@@ -73,8 +83,4 @@ with st.sidebar:
 
         live_prices()
 
-    if st.button("Recalculer", width="stretch"):
-        invalidate()
-        st.rerun()
-
-st.navigation(pages).run()
+st.navigation(pages, expanded=True).run()

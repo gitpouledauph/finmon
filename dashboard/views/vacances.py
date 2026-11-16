@@ -6,7 +6,7 @@ from finmon import charts
 from finmon.analytics import budget
 
 b = bundle()
-st.title("Vacances")
+st.title("Travel")
 if b.tx.empty:
     empty_state("opérations bancaires")
     st.stop()
@@ -15,9 +15,8 @@ db = get_db()
 vac = b.vacations.copy()
 
 # ------------------------------------------------------------- périodes
-with st.expander("Mes périodes de vacances", expanded=vac.empty):
-    st.caption("Toute dépense pendant une période compte pour le voyage (hors loyer, abonnements, impôts…). "
-               "Les achats faits avant (billets, hôtels) se rattachent depuis la page Dépenses, colonne « Vacances ».")
+with st.expander("Trips", expanded=vac.empty):
+    pass
     edit = st.data_editor(
         vac.assign(start=pd.to_datetime(vac["start"]), end=pd.to_datetime(vac["end"])) if not vac.empty
         else pd.DataFrame({"name": pd.Series(dtype=str), "start": pd.Series(dtype="datetime64[ns]"),
@@ -27,7 +26,7 @@ with st.expander("Mes périodes de vacances", expanded=vac.empty):
                        "start": st.column_config.DateColumn("Début", format="DD/MM/YYYY", required=True),
                        "end": st.column_config.DateColumn("Fin", format="DD/MM/YYYY", required=True),
                        "note": st.column_config.TextColumn("Note")}, key="vac_editor")
-    if st.button("Enregistrer les périodes", type="primary"):
+    if st.button("Save trips", type="primary"):
         e = edit.dropna(subset=["name", "start", "end"]).copy()
         e["start"] = pd.to_datetime(e["start"]).dt.strftime("%Y-%m-%d")
         e["end"] = pd.to_datetime(e["end"]).dt.strftime("%Y-%m-%d")
@@ -38,7 +37,7 @@ with st.expander("Mes périodes de vacances", expanded=vac.empty):
 
 sug = budget.suggest_vacations(b.tx, vac)
 if not sug.empty:
-    st.markdown("**Séjours détectés automatiquement** (paiements en devise étrangère)")
+    st.markdown("**Detected trips** · foreign-currency payments")
     for i, r in sug.iterrows():
         c1, c2 = st.columns([4, 1])
         c1.write(f"• {r['name']} — du {r['start']:%d/%m/%Y} au {r['end']:%d/%m/%Y}, {r['ops']} opérations, {eur(r['total'])}")
@@ -49,12 +48,12 @@ if not sug.empty:
             st.rerun()
 
 if vac.empty:
-    st.info("Ajoutez une période ci-dessus pour voir le coût de vos voyages.")
+    st.info("Add a trip to see its cost.")
     st.stop()
 
 spend = budget.vacation_spend(b.tx, vac)
 if spend.empty:
-    st.info("Aucune dépense trouvée sur ces périodes.")
+    st.info("No spending in these periods.")
     st.stop()
 
 # ------------------------------------------------------------- synthèse
@@ -72,7 +71,7 @@ share = agg[year_of == this_year - 1].sum() / exp_year.get(this_year - 1, float(
 c[2].metric(f"Part des dépenses {this_year - 1}", f"{share * 100:.0f} %" if share == share else "—")
 c[3].metric("Coût moyen par jour", eur((agg / days).mean()))
 
-st.subheader("Coût par voyage")
+st.subheader("Cost per trip")
 cat = spend.pivot_table(index="vacation", columns="category", values="spend", aggfunc="sum", fill_value=0.0)
 cat = cat.reindex(trips.sort_values("start").index).dropna(how="all").fillna(0.0)
 top = list(cat.sum().sort_values(ascending=False).index[:7])
@@ -84,16 +83,16 @@ plot(charts.stacked_bars(g, colors=charts.color_map(top)), key="trips")
 
 l, r = st.columns(2)
 with l:
-    st.subheader("Par année")
+    st.subheader("By year")
     y = agg.groupby(year_of).sum()
     plot(charts.hbar([str(i) for i in y.index], y.values, text=[eur(v) for v in y.values]), key="years")
 with r:
-    st.subheader("Coût par jour")
+    st.subheader("Cost per day")
     per = (agg / days).sort_values(ascending=False)
     plot(charts.hbar(per.index, per.values, text=[eur(v) for v in per.values]), key="perday")
 
-with st.expander("Détail des opérations"):
-    pick = st.selectbox("Voyage", trips.index.tolist())
+with st.expander("Transactions"):
+    pick = st.selectbox("Trip", trips.index.tolist())
     d = spend[spend["vacation"] == pick].sort_values("date")
     st.dataframe(d[["date", "label", "category", "spend", "foreign_currency"]].rename(columns={
         "date": "Date", "label": "Libellé", "category": "Catégorie", "spend": "Montant", "foreign_currency": "Devise"}),

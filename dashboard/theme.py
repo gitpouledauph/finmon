@@ -1,49 +1,94 @@
-"""Habillage visuel du dashboard : typographie Inter, cartes sobres, mode sombre."""
+"""Meridian — visual layer: Inter typography, quiet surfaces, one accent."""
 import streamlit as st
+
+ACCENT = "#5b8cff"
 
 CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+:root { --bg:#0a0c10; --panel:#11141a; --panel2:#151922; --line:#1e232d; --muted:#8b93a3; --ink:#e9ecf1;
+        --accent:#5b8cff; --good:#34c38f; --bad:#f06a6a; }
 html, body, .stApp, .stMarkdown, button, input, textarea, select, [data-testid="stMetricValue"] {
   font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif !important;
-  font-feature-settings: 'tnum' 1, 'cv11' 1;
-}
-.stApp { background: var(--fm-bg); }
-:root { --fm-bg:#0b0d12; --fm-card:#12151c; --fm-line:#1f2430; --fm-muted:#8a90a0; --fm-ink:#e8e9ed;
-        --fm-good:#3ccf7a; --fm-bad:#f0625d; }
-.block-container { padding-top: 2.2rem; max-width: 1280px; }
-section[data-testid="stSidebar"] { background:#0e1117; border-right:1px solid var(--fm-line); }
-section[data-testid="stSidebar"] [data-testid="stNavSectionHeader"] {
-  text-transform: uppercase; letter-spacing:.08em; font-size:.68rem; color:var(--fm-muted); font-weight:600; }
-h1 { font-weight:600 !important; font-size:1.65rem !important; letter-spacing:-.02em; }
+  font-feature-settings: 'tnum' 1, 'cv11' 1; }
+.stApp { background: var(--bg); }
+.block-container { padding-top: 1.6rem; padding-bottom: 3rem; max-width: 1360px; }
+header[data-testid="stHeader"] { background: transparent; }
+
+/* ---------- sidebar ---------- */
+section[data-testid="stSidebar"] { background: #0d0f14; border-right: 1px solid var(--line); }
+section[data-testid="stSidebar"] .block-container, section[data-testid="stSidebar"] [data-testid="stSidebarContent"] { padding-top: .6rem; }
+[data-testid="stSidebarNav"] { padding-top: .2rem; }
+[data-testid="stSidebarHeader"] { padding: 1rem 1rem .4rem 1rem; }
+[data-testid="stSidebarLogo"], [data-testid="stLogo"] { height: 2.4rem !important; max-width: 13rem !important; }
+[data-testid="stNavSectionHeader"] { text-transform: uppercase; letter-spacing: .09em; font-size: .66rem !important;
+  color: #6b7383 !important; font-weight: 600; margin-top: .9rem; }
+[data-testid="stSidebarNav"] a { border-radius: 8px; margin: 1px 0; padding: .32rem .6rem; }
+[data-testid="stSidebarNav"] a span { color: #b9c0cc !important; font-size: .9rem; font-weight: 450; }
+[data-testid="stSidebarNav"] a:hover { background: #161a22; }
+[data-testid="stSidebarNav"] a[aria-current="page"] { background: rgba(91,140,255,.12); }
+[data-testid="stSidebarNav"] a[aria-current="page"] span { color: var(--ink) !important; font-weight: 600; }
+[data-testid="stSidebarNav"] a[aria-current="page"] [data-testid="stIconMaterial"] { color: var(--accent) !important; }
+[data-testid="stSidebarNav"] [data-testid="stIconMaterial"] { color: #7d8595 !important; }
+.fm-brand { display:flex; align-items:center; gap:.55rem; padding:.2rem 0 .8rem 0; }
+.fm-brand .name { font-weight:700; font-size:1.12rem; letter-spacing:-.02em; color:var(--ink); }
+.fm-brand .tag { font-size:.68rem; color:var(--muted); letter-spacing:.04em; text-transform:uppercase; margin-top:-2px; }
+.fm-side-sep { height:1px; background:var(--line); margin:.6rem 0; }
+.fm-live { font-size:.75rem; color:var(--muted); display:flex; align-items:center; gap:.4rem; }
+.fm-live .dot { width:6px; height:6px; border-radius:50%; background:var(--good); display:inline-block; }
+
+/* ---------- typography ---------- */
+h1 { font-weight:650 !important; font-size:1.5rem !important; letter-spacing:-.02em; margin-bottom:.2rem !important; }
 h2, h3 { font-weight:600 !important; letter-spacing:-.01em; }
-h3 { font-size:1.05rem !important; color:var(--fm-ink); }
-[data-testid="stMetric"] { background:var(--fm-card); border:1px solid var(--fm-line); border-radius:12px;
-  padding:14px 18px; }
-[data-testid="stMetricLabel"] p { font-size:.72rem !important; text-transform:uppercase; letter-spacing:.07em;
-  color:var(--fm-muted) !important; font-weight:500; }
-[data-testid="stMetricValue"] { font-weight:600; font-size:1.55rem !important; letter-spacing:-.02em; }
-[data-testid="stExpander"] details { border:1px solid var(--fm-line); border-radius:12px; background:var(--fm-card); }
-[data-testid="stDataFrame"], [data-testid="stTable"] { border:1px solid var(--fm-line); border-radius:12px; }
-.stTabs [data-baseweb="tab-list"] { gap: 1.2rem; border-bottom:1px solid var(--fm-line); }
-.stTabs [data-baseweb="tab"] { font-weight:500; }
-.fm-eyebrow { text-transform:uppercase; letter-spacing:.08em; font-size:.72rem; color:var(--fm-muted);
-  font-weight:600; margin:0 0 .2rem 0; }
-.fm-hero { font-size:2.6rem; font-weight:650; letter-spacing:-.03em; line-height:1.1; color:var(--fm-ink); }
-.fm-chip { display:inline-block; margin-top:.45rem; padding:.18rem .55rem; border-radius:999px; font-size:.82rem;
-  font-weight:500; }
-.fm-chip.up { color:var(--fm-good); background:rgba(60,207,122,.12); }
-.fm-chip.down { color:var(--fm-bad); background:rgba(240,98,93,.12); }
-.fm-sub { color:var(--fm-muted); font-size:.82rem; margin-left:.5rem; }
-.fm-brand { font-weight:700; font-size:1.15rem; letter-spacing:-.02em; color:var(--fm-ink); }
-.fm-brand span { color:#3987e5; }
-hr { border-color: var(--fm-line) !important; }
+h3 { font-size:.95rem !important; color:var(--ink); text-transform:none; margin-top:.6rem !important; }
+[data-testid="stCaptionContainer"] { color: var(--muted) !important; }
+
+/* ---------- cards ---------- */
+[data-testid="stMetric"] { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px 16px; }
+[data-testid="stMetricLabel"] p { font-size:.68rem !important; text-transform:uppercase; letter-spacing:.08em;
+  color:var(--muted) !important; font-weight:600; }
+[data-testid="stMetricValue"] { font-weight:600; font-size:1.42rem !important; letter-spacing:-.02em; }
+[data-testid="stMetricDelta"] { font-size:.78rem !important; }
+[data-testid="stExpander"] details { border:1px solid var(--line); border-radius:12px; background:var(--panel); }
+[data-testid="stDataFrame"], [data-testid="stTable"] { border:1px solid var(--line); border-radius:10px; }
+[data-testid="stPlotlyChart"] { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:6px 6px 2px 6px; }
+.stTabs [data-baseweb="tab-list"] { gap:1.1rem; border-bottom:1px solid var(--line); }
+.stTabs [data-baseweb="tab"] { font-weight:500; font-size:.88rem; }
+hr { border-color: var(--line) !important; }
+
+/* ---------- custom blocks ---------- */
+.fm-eyebrow { text-transform:uppercase; letter-spacing:.09em; font-size:.68rem; color:var(--muted); font-weight:600; margin:0 0 .15rem 0; }
+.fm-hero { font-size:2.4rem; font-weight:650; letter-spacing:-.03em; line-height:1.1; color:var(--ink); }
+.fm-chip { display:inline-block; margin-top:.4rem; padding:.16rem .55rem; border-radius:999px; font-size:.8rem; font-weight:500; }
+.fm-chip.up { color:var(--good); background:rgba(52,195,143,.12); }
+.fm-chip.down { color:var(--bad); background:rgba(240,106,106,.12); }
+.fm-sub { color:var(--muted); font-size:.8rem; margin-left:.5rem; }
+.fm-section { display:flex; align-items:baseline; justify-content:space-between; margin:1.2rem 0 .4rem 0;
+  border-bottom:1px solid var(--line); padding-bottom:.35rem; }
+.fm-section .t { font-size:.78rem; text-transform:uppercase; letter-spacing:.09em; color:#c3c9d4; font-weight:600; }
+.fm-section .n { font-size:.75rem; color:var(--muted); }
+.fm-score { display:flex; align-items:center; gap:1rem; }
+.fm-score .v { font-size:2.6rem; font-weight:700; letter-spacing:-.03em; }
+.fm-bar { height:6px; background:#1b2029; border-radius:6px; overflow:hidden; }
+.fm-bar > div { height:100%; border-radius:6px; }
 </style>
 """
+
+LOGO = """<svg width="26" height="26" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+<circle cx="16" cy="16" r="12" fill="none" stroke="#1e2633" stroke-width="5"/>
+<circle cx="16" cy="16" r="12" fill="none" stroke="#5b8cff" stroke-width="5" stroke-dasharray="48 100"
+ transform="rotate(-90 16 16)" stroke-linecap="round"/>
+<circle cx="16" cy="16" r="12" fill="none" stroke="#34c38f" stroke-width="5" stroke-dasharray="14 100"
+ stroke-dashoffset="-52" transform="rotate(-90 16 16)" stroke-linecap="round"/></svg>"""
 
 
 def apply() -> None:
     st.html(CSS)
+
+
+def brand() -> None:
+    st.html(f"<div class='fm-brand'>{LOGO}<div><div class='name'>Meridian</div>"
+            f"<div class='tag'>Wealth intelligence</div></div></div>")
 
 
 def hero(label: str, value: str, delta: float | None = None, delta_txt: str = "", sub: str = "") -> None:
@@ -53,3 +98,7 @@ def hero(label: str, value: str, delta: float | None = None, delta_txt: str = ""
         arrow = "▲" if delta >= 0 else "▼"
         chip = f"<span class='fm-chip {cls}'>{arrow} {delta_txt}</span><span class='fm-sub'>{sub}</span>"
     st.html(f"<div class='fm-eyebrow'>{label}</div><div class='fm-hero'>{value}</div>{chip}")
+
+
+def section(title: str, note: str = "") -> None:
+    st.html(f"<div class='fm-section'><span class='t'>{title}</span><span class='n'>{note}</span></div>")

@@ -43,6 +43,7 @@ def load(db: DB, today: date | None = None) -> Bundle:
     tx = budget.classify(raw_tx, overrides, dict(zip(accounts["id"], accounts["type"])))
     tx = budget.link_investments(tx, trades, accounts)
     tx = budget.add_fixed_rent(tx, accounts)
+    tx = budget.apply_income_treatment(tx, db.table("income_treatment"))
     tx = budget.spread_income(tx, accounts)
     tx = budget.match_health_refunds(tx)
     tx = budget.add_adjustments(tx, db.table("manual_adjustments"), accounts)
@@ -54,6 +55,16 @@ def load(db: DB, today: date | None = None) -> Bundle:
     bsnaps = db.table("balance_snapshots")
 
     pf = portfolio.build(trades, snaps, instruments, prices, fx, today=today)
+    # Comptes valorisés à la main (épargne salariale…) : fusionnés comme un compte de courtier.
+    from .analytics import manual_accounts
+
+    macc, mpos, mcur = manual_accounts.build(accounts, bsnaps, db.table("manual_contributions"), pf.days,
+                                             pd.Timestamp(today or date.today()))
+    if not macc.empty:
+        pf.accounts = pd.concat([pf.accounts, macc], ignore_index=True) if not pf.accounts.empty else macc
+        pf.positions = pd.concat([pf.positions, mpos], ignore_index=True) if not pf.positions.empty else mpos
+        pf.current = pd.concat([pf.current, mcur], ignore_index=True) if not pf.current.empty else mcur
+        pf.current["weight"] = pf.current["value"] / pf.current["value"].sum()
     days = None
     starts = [s for s in (pf.days.min() if len(pf.days) else None,
                           pd.to_datetime(raw_tx["date"]).min() if not raw_tx.empty else None,

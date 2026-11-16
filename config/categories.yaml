@@ -36,6 +36,10 @@ categories:
   Remboursement d'impôts (étalé): {type: income}      # voir « etalement » dans les règles du profil
   Ajustements manuels (revenus): {type: income}       # saisis dans Vue globale / Bilan du mois
   Ajustements manuels (dépenses): {type: expense}     # idem : + augmente, − réduit les dépenses
+  Revenus retenus: {type: income}                     # entrée d'argent comptée en revenu (page Cash flow)
+  Revenus lissés: {type: income}                      # entrée lissée sur plusieurs mois (page Cash flow)
+  Entrées déduites des dépenses: {type: expense}      # entrée déduite des dépenses du mois
+  Entrées ignorées: {type: transfer}                  # entrée mise de côté
   Remboursements santé: {type: expense}               # mutuelle, CPAM : déduits de la dépense santé
   Virements internes: {type: transfer}
   Épargne livrets: {type: transfer}             # vers / depuis les livrets : épargne nette

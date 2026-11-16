@@ -10,15 +10,12 @@ from finmon import charts
 from finmon.analytics import simulation as sim
 
 b = bundle()
-st.title("Simulation")
+st.title("Line simulator")
 cur = b.portfolio.current
 if cur.empty:
     empty_state("positions")
     st.stop()
-st.caption("Projection de chaque ligne au rendement annuel moyen de son cours en euros sur les 10 dernières années "
-           "(ou depuis sa création si elle est plus récente), avec une fourchette tirée de sa volatilité passée. "
-           "C'est une extrapolation du passé, pas une prévision : les performances passées ne préjugent pas des "
-           "performances futures.")
+pass
 
 ETF_RE = re.compile(r"\bETF\b|UCITS|AMUNDI|ISHARES|VANECK|LYXOR|XTRACKERS|SPDR|VANGUARD|INVESCO|WISDOMTREE|"
                     r"\bPEA\b.*(?:NASDAQ|S&P|MSCI|STOXX)|PROFILE", re.I)
@@ -36,11 +33,11 @@ horizon = c1.segmented_control("Horizon", [5, 10, 15, 20], default=10, format_fu
 scope = c2.segmented_control("Lignes", ["ETF", "Toutes"], default="ETF") or "ETF"
 view = lines[lines["ETF"]] if scope == "ETF" else lines
 if view.empty:
-    st.info("Aucune ligne ETF reconnue : affichez toutes les lignes.")
+    st.info("No ETF line found.")
     st.stop()
 
 if profile_name() == "demo":
-    st.info("La simulation télécharge l'historique des cours sur Yahoo Finance : indisponible sur le profil Démo.")
+    st.info("Not available on the demo profile.")
     st.stop()
 
 
@@ -58,9 +55,8 @@ view = view.assign(
 ).sort_values("value", ascending=False)
 
 # ------------------------------------------------------------- hypothèses modifiables
-st.subheader("Hypothèses")
-st.caption("Rendement et volatilité sont pré-remplis avec l'historique ; vous pouvez les modifier, et ajouter un "
-           "versement mensuel par ligne (par exemple votre investissement programmé).")
+st.subheader("Assumptions")
+pass
 hyp = pd.DataFrame({
     "Ligne": view["Ligne"], "Ticker": view["ticker"], "Comptes": view["Comptes"], "Valeur": view["value"],
     "Historique (ans)": view["years"].round(1), "Rendement / an (%)": (view["cagr"] * 100).round(1),
@@ -118,9 +114,9 @@ st.dataframe(res, hide_index=True, width="stretch", column_config={
     "Multiplié par": st.column_config.NumberColumn(format="× %.2f")})
 
 # ------------------------------------------------------------- trajectoire
-st.subheader("Trajectoire")
+st.subheader("Trajectory")
 choices = ["Portefeuille (lignes affichées)"] + ed["Ligne"].tolist()
-pick = st.selectbox("Ligne", choices, label_visibility="collapsed")
+pick = st.selectbox("Line", choices, label_visibility="collapsed")
 if pick == choices[0]:
     traj = sim.path(float(ed["Valeur"].sum()), port_r, port_vol, horizon, monthly_total)
 else:
@@ -129,7 +125,7 @@ else:
     vv = None if pd.isna(r["Volatilité (%)"]) else r["Volatilité (%)"] / 100
     traj = sim.path(float(r["Valeur"]), rr, vv, horizon, float(r["Versement / mois (€)"] or 0))
 if traj["central"].isna().all():
-    st.info("Pas assez d'historique pour cette ligne : indiquez un rendement dans le tableau des hypothèses.")
+    st.info("Not enough history: set a return in the assumptions.")
 else:
     years = [pd.Timestamp.today().year + y for y in traj.index]
     fig = go.Figure()

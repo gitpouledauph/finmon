@@ -114,6 +114,27 @@ CREATE TABLE IF NOT EXISTS vacations (
     note TEXT
 );
 
+CREATE TABLE IF NOT EXISTS fee_overrides (
+    isin TEXT PRIMARY KEY,
+    ter REAL NOT NULL               -- frais courants annuels, en fraction (0.003 = 0,30 %)
+);
+
+CREATE TABLE IF NOT EXISTS goals (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    target REAL NOT NULL,
+    deadline TEXT,                  -- AAAA-MM-JJ
+    scope TEXT NOT NULL,            -- net_worth | investments | savings | account:<id>
+    initial REAL                    -- montant déjà affecté (facultatif)
+);
+
+CREATE TABLE IF NOT EXISTS income_treatment (
+    tx_id TEXT PRIMARY KEY,         -- opération bancaire d'entrée d'argent
+    mode TEXT NOT NULL,             -- ignore | income | smooth | offset
+    months INTEGER,                 -- lissage : nombre de mois
+    start TEXT                      -- lissage : premier mois (AAAA-MM)
+);
+
 CREATE TABLE IF NOT EXISTS manual_contributions (
     id TEXT PRIMARY KEY,
     account_id TEXT NOT NULL,       -- compte valorisé à la main (ex. plan d'épargne entreprise)

@@ -5,7 +5,7 @@ from datetime import date
 
 import pandas as pd
 
-CASH_TYPES = {"courant", "livret", "autre", "epargne_salariale"}   # valorisés par des soldes saisis
+CASH_TYPES = {"courant", "livret", "autre"}   # épargne salariale : voir analytics/manual_accounts.py
 BUCKET = {"courant": "Liquidités", "livret": "Épargne réglementée", "autre": "Autres actifs",
           "pea": "Investissements", "cto": "Investissements", "assurance_vie": "Investissements",
           "crypto": "Investissements", "epargne_salariale": "Investissements"}

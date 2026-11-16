@@ -177,3 +177,114 @@ def treemap(df: pd.DataFrame, path_cols: list[str], value_col: str = "value", he
     fig.update_layout(height=height, margin=dict(l=0, r=0, t=8, b=0), font=dict(family=FONT),
                       paper_bgcolor="rgba(0,0,0,0)", separators=", ")
     return fig
+
+
+# --------------------------------------------------------------------------
+# Professional figures (Meridian)
+# --------------------------------------------------------------------------
+INK, INK_MUTED, SURFACE = "#e9ecf1", "#8b93a3", "#11141a"
+CAT = ["#5b8cff", "#f2a65a", "#34c38f", "#c48bff", "#ef6f9a", "#4fc9d9", "#d9c55a", "#8f9bb3"]
+
+
+def _clean(fig: go.Figure, height: int, legend: bool = True) -> go.Figure:
+    fig.update_layout(height=height, margin=dict(l=8, r=8, t=10, b=8), font=dict(family=FONT, size=12, color=INK),
+                      paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", separators=", ",
+                      showlegend=legend, legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0, title=None,
+                                                     font=dict(color=INK_MUTED, size=11)),
+                      hoverlabel=dict(font_family=FONT, bgcolor="#1a1f29", bordercolor="#2a3140"))
+    return fig
+
+
+def donut(labels, values, height=300, center: str | None = None, colors: dict | None = None) -> go.Figure:
+    labels, values = list(labels), list(values)
+    cm = colors or {l: CAT[i % len(CAT)] if i < len(CAT) else OTHER for i, l in enumerate(labels)}
+    fig = go.Figure(go.Pie(labels=labels, values=values, hole=0.68, sort=False, direction="clockwise",
+                           marker=dict(colors=[cm.get(l, OTHER) for l in labels], line=dict(color=SURFACE, width=2)),
+                           textinfo="none", hovertemplate="%{label}<br>%{value:,.0f} € · %{percent}<extra></extra>"))
+    if center:
+        fig.add_annotation(text=center, x=0.5, y=0.5, showarrow=False, font=dict(size=15, color=INK))
+    fig = _clean(fig, height, legend=False)
+    fig.update_layout(margin=dict(l=4, r=4, t=4, b=4))
+    return fig
+
+
+def legend_rows(labels, values, colors: dict | None = None) -> str:
+    """HTML legend with color dot, label, share and value — for donuts."""
+    labels, values = list(labels), list(values)
+    tot = sum(values) or 1
+    cm = colors or {l: CAT[i % len(CAT)] if i < len(CAT) else OTHER for i, l in enumerate(labels)}
+    rows = "".join(
+        f"<div style='display:flex;justify-content:space-between;align-items:center;padding:3px 0;"
+        f"border-bottom:1px solid #1a1f28;font-size:.82rem'>"
+        f"<span style='display:flex;align-items:center;gap:.5rem;color:{INK}'>"
+        f"<span style='width:8px;height:8px;border-radius:2px;background:{cm.get(l, OTHER)};display:inline-block'></span>{l}</span>"
+        f"<span style='color:{INK_MUTED}'>{v / tot * 100:.1f} %&nbsp;&nbsp;<span style='color:{INK}'>{eur(v)}</span></span></div>"
+        for l, v in zip(labels, values))
+    return f"<div style='padding:2px 4px'>{rows}</div>"
+
+
+def perf_treemap(df: pd.DataFrame, height=460) -> go.Figure:
+    """Lines sized by value, colored by performance (diverging red/grey/green), grouped by a parent column."""
+    import numpy as np
+
+    d = df.copy()
+    perf = d["perf"].fillna(0).clip(-0.5, 0.5)
+    ids, labels, parents, values, colors, texts, hover = [], [], [], [], [], [], []
+    for g, sub in d.groupby("group"):
+        ids.append(f"g:{g}"); labels.append(g); parents.append(""); values.append(sub["value"].sum())
+        colors.append("#151922"); texts.append(""); hover.append(f"{g}<br>{eur(sub['value'].sum())}")
+    for r, p in zip(d.itertuples(), perf):
+        ids.append(f"l:{r.group}:{r.name}"); labels.append(r.name); parents.append(f"g:{r.group}")
+        values.append(r.value); colors.append(p)
+        texts.append(f"{r.name}<br>{(r.perf or 0) * 100:+.1f} %")
+        hover.append(f"{r.name}<br>{eur(r.value)} · {(r.perf or 0) * 100:+.1f} %")
+    num = [c if isinstance(c, float) else np.nan for c in colors]
+    fig = go.Figure(go.Treemap(
+        ids=ids, labels=labels, parents=parents, values=values, branchvalues="total", text=texts,
+        texttemplate="%{text}", hovertext=hover, hovertemplate="%{hovertext}<extra></extra>",
+        marker=dict(colors=[c if isinstance(c, float) else 0 for c in colors],
+                    colorscale=[[0, "#c0392b"], [0.35, "#7a2f35"], [0.5, "#2a2f3a"], [0.65, "#1f6b4f"], [1, "#27ae60"]],
+                    cmin=-0.5, cmax=0.5, line=dict(color=SURFACE, width=2), showscale=False),
+        root_color="rgba(0,0,0,0)", tiling=dict(pad=2), pathbar=dict(visible=False),
+        textfont=dict(color="#f3f5f8", size=12),
+    ))
+    _ = num
+    fig = _clean(fig, height, legend=False)
+    fig.update_layout(margin=dict(l=0, r=0, t=0, b=0))
+    return fig
+
+
+def grouped_hbar(categories, series: dict, height=None, colors: dict | None = None, xsuffix=" €") -> go.Figure:
+    """Horizontal grouped bars: one row per category, one bar per series (e.g. this month vs other)."""
+    cats = list(categories)
+    cm = colors or {k: CAT[i] for i, k in enumerate(series)}
+    fig = go.Figure()
+    for name, vals in series.items():
+        fig.add_trace(go.Bar(y=cats, x=list(vals), name=name, orientation="h", marker=dict(color=cm[name], line=dict(width=0)),
+                             hovertemplate="%{y}<br>%{x:,.0f}" + xsuffix + "<extra>" + name + "</extra>"))
+    fig = _clean(fig, height or max(220, 30 * len(cats) * max(1, len(series)) // 1.6 + 60))
+    fig.update_layout(barmode="group", bargap=0.28, bargroupgap=0.06, hovermode="closest")
+    fig.update_yaxes(autorange="reversed", showgrid=False, ticksuffix="  ", tickfont=dict(color=INK_MUTED))
+    fig.update_xaxes(showgrid=True, gridcolor=GRID, ticksuffix=xsuffix, tickformat=",.0f", nticks=5, zeroline=False,
+                     tickfont=dict(color=INK_MUTED))
+    return fig
+
+
+def diverging_hbar(labels, values, height=None, xsuffix=" €", invert: bool = False) -> go.Figure:
+    """Signed horizontal bars with value labels inside the plot area (no clipping).
+    invert=True: positive values are bad (e.g. more spending)."""
+    labels, values = list(labels), list(values)
+    colors = [(BAD if invert else GOOD) if v >= 0 else (GOOD if invert else BAD) for v in values]
+    fig = go.Figure(go.Bar(y=labels, x=values, orientation="h", marker=dict(color=colors, line=dict(width=0)),
+                           text=[(eur(v, sign=True) if xsuffix == " €" else f"{v:+.1f}{xsuffix}") for v in values],
+                           textposition="outside", cliponaxis=False, textfont=dict(color=INK_MUTED, size=11),
+                           hovertemplate="%{y}: %{x:+,.0f}" + xsuffix + "<extra></extra>"))
+    lo, hi = min(values + [0]), max(values + [0])
+    span = (hi - lo) or 1
+    fig = _clean(fig, height or max(200, 28 * len(labels) + 50), legend=False)
+    fig.update_layout(bargap=0.35, hovermode="closest", margin=dict(l=8, r=40, t=8, b=8))
+    fig.update_yaxes(autorange="reversed", showgrid=False, ticksuffix="  ", tickfont=dict(color=INK_MUTED))
+    fig.update_xaxes(showgrid=True, gridcolor=GRID, zeroline=True, zerolinecolor="#3a4252", ticksuffix=xsuffix,
+                     tickformat=",.0f", nticks=5, range=[lo - 0.25 * span if lo < 0 else 0, hi + 0.25 * span if hi > 0 else 0],
+                     tickfont=dict(color=INK_MUTED))
+    return fig

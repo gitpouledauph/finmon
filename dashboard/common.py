@@ -17,7 +17,7 @@ from finmon.charts import eur, pct  # noqa: E402,F401
 from finmon.data import Bundle, load  # noqa: E402
 from finmon.db import DB  # noqa: E402
 
-PERIODS = {"1M": 30, "3M": 91, "6M": 182, "YTD": None, "1A": 365, "3A": 1095, "Tout": 0}
+PERIODS = {"1M": 30, "3M": 91, "6M": 182, "YTD": None, "1Y": 365, "3Y": 1095, "All": 0}
 
 
 def profile_name() -> str:
@@ -59,8 +59,8 @@ def period_start(key: str, last: pd.Timestamp, first: pd.Timestamp) -> pd.Timest
     return first if not days else max(first, last - pd.Timedelta(days=days))
 
 
-def period_picker(key: str = "period", default: str = "1A") -> str:
-    return st.segmented_control("Période", list(PERIODS), default=default, key=key,
+def period_picker(key: str = "period", default: str = "1Y") -> str:
+    return st.segmented_control("Period", list(PERIODS), default=default, key=key,
                                 label_visibility="collapsed") or default
 
 
@@ -285,3 +285,37 @@ def adjustments_editor(months: list, key: str, default_month=None) -> None:
                            [float(r.Montant), r.Explication, r.id])
         invalidate()
         st.rerun()
+
+
+# ------------------------------------------------------------------ English labels for stored data
+EN = {
+    # asset classes / buckets
+    "Actions": "Equities", "Obligations": "Bonds", "Monétaire": "Money market", "Crypto": "Crypto",
+    "Matières premières": "Commodities", "Immobilier": "Real estate", "Liquidités": "Cash",
+    "Épargne réglementée": "Regulated savings", "Épargne salariale": "Employee savings", "Investissements": "Investments",
+    "Autres actifs": "Other assets", "Diversifié": "Multi-asset",
+    # envelopes
+    "Comptes courants": "Current accounts", "Livrets": "Savings accounts", "PEA": "PEA", "Compte-titres": "Brokerage",
+    "Assurance vie": "Life insurance", "Autres": "Other", "Liquidités (courtier)": "Broker cash",
+    # regions
+    "Amérique du Nord": "North America", "Europe": "Europe", "Japon": "Japan", "Asie-Pacifique": "Asia-Pacific",
+    "Émergents": "Emerging markets", "Monde": "World", "Autre": "Other", "AUTRE": "Other", "Non renseigné": "Unspecified",
+    # sectors
+    "Technologie": "Technology", "Conso. cyclique": "Consumer cyclical", "Conso. de base": "Consumer staples",
+    "Matériaux": "Materials", "Communication": "Communication", "Finance": "Financials", "Santé": "Healthcare",
+    "Services publics": "Utilities", "Industrie": "Industrials", "Énergie": "Energy",
+    # spending categories
+    "Loyer": "Rent", "Logement": "Housing", "Alimentation": "Groceries", "Restaurants & bars": "Restaurants & bars",
+    "Transports": "Transport", "Voyages": "Travel", "Shopping": "Shopping", "Loisirs & culture": "Leisure",
+    "Soins & beauté": "Personal care", "Abonnements & télécom": "Subscriptions", "Assurances": "Insurance",
+    "Impôts & taxes": "Taxes", "Banque & frais": "Bank fees", "Cadeaux & dons": "Gifts", "Éducation": "Education",
+    "Retraits espèces": "Cash withdrawals", "Autres dépenses": "Other", "Remboursements entre amis": "Friends",
+    "Remboursements santé": "Health refunds", "Ajustements manuels (dépenses)": "Manual adjustment",
+    "Ajustements manuels (revenus)": "Manual adjustment", "Primes & CE": "Bonus & works council",
+    "Remboursement d'impôts (étalé)": "Tax refund (smoothed)", "Salaire": "Salary", "Autres revenus": "Other income",
+    "Revenus lissés": "Smoothed income",
+}
+
+
+def en(x):
+    return EN.get(x, x) if isinstance(x, str) else x

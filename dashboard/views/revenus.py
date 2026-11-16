@@ -9,12 +9,12 @@ from finmon import charts, config
 from finmon.analytics import budget
 
 b = bundle()
-st.title("Revenus & épargne")
+st.title("Savings accounts")
 
 flows = budget.monthly_flows(b.tx)
 if not flows.empty:
     complete = flows[flows.index < pd.Timestamp.today().to_period("M").to_timestamp()].tail(24)
-    st.subheader("Revenus, dépenses et épargne par mois")
+    st.subheader("Income, spending and savings")
     fig = go.Figure()
     for col, lab in (("income", "Revenus"), ("expenses", "Dépenses")):
         fig.add_trace(go.Bar(x=complete.index, y=complete[col], name=lab, marker_color=charts.FIXED[lab],
@@ -24,18 +24,18 @@ if not flows.empty:
 
     l, r = st.columns(2)
     with l:
-        st.subheader("Épargne mensuelle")
+        st.subheader("Monthly savings")
         plot(charts.signed_hbar([d.strftime("%m/%Y") for d in complete.index[::-1]], complete["savings"].values[::-1]),
              key="sav")
     with r:
-        st.subheader("Taux d'épargne (moyenne glissante 3 mois)")
+        st.subheader("Savings rate · 3-month rolling")
         roll = (complete["savings"].rolling(3).sum() / complete["income"].rolling(3).sum() * 100).to_frame("Taux d'épargne")
         plot(charts.line(roll.dropna(), ["Taux d'épargne"], ysuffix=" %", yfmt=".0f", hover_fmt=".0f",
                          colors={"Taux d'épargne": charts.SERIES[0]}), key="rate")
 
     inc = b.tx[b.tx["cat_type"] == "income"]
     if not inc.empty:
-        st.subheader("Sources de revenus (12 derniers mois)")
+        st.subheader("Income sources · 12 m")
         rec = inc[inc["date"] > pd.Timestamp.today() - pd.DateOffset(months=12)]
         src = rec.groupby("category")["amount"].sum().sort_values(ascending=False)
         plot(charts.hbar(src.index, src.values, color=charts.SERIES[2], text=[eur(v) for v in src.values]), key="src")
@@ -43,7 +43,7 @@ else:
     empty_state("opérations bancaires")
 
 # ------------------------------------------------------------- livrets
-st.subheader("Livrets et épargne réglementée")
+st.subheader("Savings accounts")
 types = b.accounts.set_index("id")["type"]
 names = b.accounts.set_index("id")["name"]
 liv = b.cash[b.cash["account_id"].map(types) == "livret"]
@@ -84,8 +84,8 @@ with st.form("manual"):
                            help="Livret A et LDDS : même taux réglementé. Mettez 0 pour un compte courant.")
     d = c5.date_input("Date", value=date.today(), format="DD/MM/YYYY")
     if not existing.empty:
-        st.caption("Comptes manuels existants : " + ", ".join(existing["name"]))
-    if st.form_submit_button("Ajouter") and name:
+        st.caption("Manual accounts: " + ", ".join(existing["name"]))
+    if st.form_submit_button("Add") and name:
         acc_id = "manuel:" + name.strip().lower().replace(" ", "-")
         db = get_db()
         db.upsert("accounts", pd.DataFrame([{"id": acc_id, "institution": "Saisie manuelle", "name": name.strip(),

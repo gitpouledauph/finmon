@@ -283,8 +283,12 @@ ADJ_EXPENSE = "Ajustements manuels (dépenses)"
 SPREAD = "Remboursement d'impôts (étalé)"
 BONUS = "Primes & CE"
 HEALTH_REFUND = "Remboursements santé"
-EXTRA_INCOME = {BONUS, SPREAD, ADJ_INCOME}           # comptés dans les revenus en plus du salaire
-EXPENSE_OFFSETS = {ADJ_EXPENSE, HEALTH_REFUND}        # comptés (en ±) dans les dépenses, hors critère « carte »
+KEPT_INCOME = "Revenus retenus"
+SMOOTHED = "Revenus lissés"
+OFFSET_INFLOW = "Entrées déduites des dépenses"
+IGNORED = "Entrées ignorées"
+EXTRA_INCOME = {BONUS, SPREAD, ADJ_INCOME, KEPT_INCOME, SMOOTHED}   # revenus en plus du salaire
+EXPENSE_OFFSETS = {ADJ_EXPENSE, HEALTH_REFUND, OFFSET_INFLOW}       # comptés (±) dans les dépenses
 
 
 def global_monthly(df: pd.DataFrame, deduct_refunds: bool = False) -> pd.DataFrame:
@@ -392,7 +396,8 @@ def spread_income(tx: pd.DataFrame, accounts: pd.DataFrame) -> pd.DataFrame:
     for p in plan:
         rx = re.compile(p["pattern"], re.I)
         n = int(p.get("mois", 1))
-        hit = df[(df["amount"] > 0) & df["label"].fillna("").str.contains(rx) & (df["source_cat"] != "manuel")]
+        hit = df[(df["amount"] > 0) & df["label"].fillna("").str.contains(rx)
+                 & ~df["source_cat"].isin(["manuel", "traitement"])]
         for i, r in hit.iterrows():
             df.at[i, "category"], df.at[i, "cat_type"], df.at[i, "source_cat"] = "Virements internes", "transfer", "étalé"
             # Point de départ : le mois de réception, ou un mois fixe d'une année relative à la réception
@@ -429,3 +434,33 @@ def match_health_refunds(tx: pd.DataFrame, days: int = 62) -> pd.DataFrame:
         df.at[i, "month"] = df.at[j, "month"]
         df.at[i, "matched_with"] = f"{df.at[j, 'date']:%d/%m/%Y} {df.at[j, 'merchant']} ({-df.at[j, 'amount']:.2f} €)"
     return df
+
+
+def apply_income_treatment(tx: pd.DataFrame, treat: pd.DataFrame) -> pd.DataFrame:
+    """Per-inflow choices made in the Cash flow page (table income_treatment):
+    income → counted as income; smooth → spread over N months from a start month;
+    offset → deducted from spending of its month; ignore → left out."""
+    if treat is None or treat.empty or tx.empty:
+        return tx
+    df = tx.copy()
+    t = treat.set_index("tx_id")
+    rows = []
+    for i in df.index[df["id"].isin(t.index)]:
+        r, tr = df.loc[i], t.loc[df.at[i, "id"]]
+        df.at[i, "source_cat"] = "traitement"
+        if tr["mode"] == "income":
+            df.at[i, "category"], df.at[i, "cat_type"] = KEPT_INCOME, "income"
+        elif tr["mode"] == "offset":
+            df.at[i, "category"], df.at[i, "cat_type"] = OFFSET_INFLOW, "expense"
+        elif tr["mode"] == "ignore":
+            df.at[i, "category"], df.at[i, "cat_type"] = IGNORED, "transfer"
+        elif tr["mode"] == "smooth":
+            n = max(1, int(tr["months"] or 1))
+            start = pd.Timestamp(f"{tr['start']}-01") if isinstance(tr["start"], str) and tr["start"] else r["month"]
+            df.at[i, "category"], df.at[i, "cat_type"] = IGNORED, "transfer"
+            for k in range(n):
+                m = start + pd.DateOffset(months=k)
+                rows.append({"id": f"smooth-{r['id']}-{k}", "account_id": r["account_id"], "date": m,
+                             "label": f"{r['label']} ({k + 1}/{n})", "merchant": "LISSAGE", "amount": r["amount"] / n,
+                             "category": SMOOTHED, "source": "lissage", "source_cat": "étalé"})
+    return _synthetic(df, rows)

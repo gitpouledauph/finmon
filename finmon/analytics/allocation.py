@@ -74,3 +74,44 @@ def allocation(current: pd.DataFrame, cash_now: pd.DataFrame, accounts: pd.DataF
         res[k] = pd.DataFrame({"label": s.index, "value": s.values, "weight": s.values / s.sum()})
     res["_lines"] = df
     return res
+
+
+# --------------------------------------------------------------------------
+# Diversification score
+# --------------------------------------------------------------------------
+def _effective_n(weights) -> float:
+    """Effective number of holdings = 1 / Σ w² (Herfindahl inverse)."""
+    w = pd.Series(weights, dtype=float)
+    w = w[w > 0]
+    if w.empty:
+        return 0.0
+    w = w / w.sum()
+    return float(1 / (w ** 2).sum())
+
+
+# dimension: (target effective number for a full score, weight in the total)
+SCORE_DIMS = {
+    "Holdings": (15.0, 0.30),
+    "Geography": (4.0, 0.20),
+    "Sectors": (7.0, 0.20),
+    "Asset classes": (3.0, 0.15),
+    "Currencies": (3.0, 0.15),
+}
+
+
+def diversification(alloc: dict, current: pd.DataFrame) -> dict:
+    """Score /100 from effective numbers (1/HHI) per dimension, each capped at a target."""
+    eff = {
+        "Holdings": _effective_n(current["value"]) if current is not None and not current.empty else 0.0,
+        "Geography": _effective_n(alloc.get("Zone géographique", pd.DataFrame({"value": []}))["value"]),
+        "Sectors": _effective_n(alloc.get("Secteur (actions)", pd.DataFrame({"value": []}))["value"]),
+        "Asset classes": _effective_n(alloc.get("Classe d'actif", pd.DataFrame({"value": []}))["value"]),
+        "Currencies": _effective_n(alloc.get("Devise (sous-jacent)", pd.DataFrame({"value": []}))["value"]),
+    }
+    parts = {k: min(1.0, eff[k] / SCORE_DIMS[k][0]) for k in eff}
+    score = sum(parts[k] * SCORE_DIMS[k][1] for k in parts) * 100
+    top = current.sort_values("value", ascending=False) if current is not None and not current.empty else None
+    return {"score": score, "parts": parts, "effective": eff,
+            "top_weight": float(top["value"].iloc[0] / top["value"].sum()) if top is not None else None,
+            "top_name": top["name"].iloc[0] if top is not None else None,
+            "top5": float(top["value"].head(5).sum() / top["value"].sum()) if top is not None else None}

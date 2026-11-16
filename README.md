@@ -1,4 +1,6 @@
-# finmon — Personal Book Monitoring
+# Meridian — local wealth & spending intelligence
+
+_(package name: `finmon`)_
 
 Moniteur **100 % local** de patrimoine, investissements et dépenses : un « Finary maison » qui tourne sur votre Mac.
 Les données viennent de fichiers (exports Boursorama, pytr pour Trade Republic) et vivent dans une base SQLite
