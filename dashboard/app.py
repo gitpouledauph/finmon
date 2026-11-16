@@ -49,6 +49,17 @@ with st.sidebar:
         st.session_state["profile"] = new
         invalidate()
     demo = new == "demo"
+    if demo:   # first visit of the demo on a fresh clone: build it
+        from finmon import config as _cfg
+        from finmon.db import DB as _DB
+
+        _p = _cfg.get_profile("demo").db_path
+        if not _p.exists() or _DB(_p).read("SELECT COUNT(*) n FROM accounts")["n"][0] == 0:
+            from finmon import demo as _demo
+
+            with st.spinner("Building demo data…"):
+                _demo.build()
+            invalidate()
     st.session_state["_full_run"] = True
 
 with st.sidebar:

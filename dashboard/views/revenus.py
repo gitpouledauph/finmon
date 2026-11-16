@@ -40,7 +40,7 @@ if not flows.empty:
         src = rec.groupby("category")["amount"].sum().sort_values(ascending=False)
         plot(charts.hbar(src.index, src.values, color=charts.SERIES[2], text=[eur(v) for v in src.values]), key="src")
 else:
-    empty_state("opérations bancaires")
+    empty_state("bank transactions")
 
 # ------------------------------------------------------------- livrets
 st.subheader("Savings accounts")

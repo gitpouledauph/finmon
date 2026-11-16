@@ -8,7 +8,7 @@ from finmon.analytics import budget
 b = bundle()
 st.title("Travel")
 if b.tx.empty:
-    empty_state("opérations bancaires")
+    empty_state("bank transactions")
     st.stop()
 
 db = get_db()

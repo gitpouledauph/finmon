@@ -12,8 +12,34 @@ from finmon.analytics import budget, portfolio
 
 b = bundle()
 if not b.has_data or b.networth.empty:
-    st.title("Net worth")
-    empty_state()
+    from common import build_demo, profile_name
+
+    st.html("<div style='padding:1.2rem 0 .4rem 0'><div class='fm-eyebrow'>Welcome</div>"
+            "<div class='fm-hero'>Meridian</div>"
+            "<div style='color:var(--muted);font-size:.95rem;margin-top:.4rem;max-width:640px'>"
+            "Net worth, investment performance and cash flow — computed on this machine from your own exports."
+            "</div></div>")
+    CARDS = [("1", "Import your history", "Broker statements, crypto exchanges, bank exports. Detected automatically, "
+              "re-imports never duplicate.", "views/donnees.py", "Open Data & imports", ":material/upload:"),
+             ("2", "Add accounts by hand", "Tracked holdings (trades, statements) or manual value (invested amount "
+              "and current value).", "views/saisie.py", "Open Transactions", ":material/add:"),
+             ("3", "Explore the demo", "A synthetic profile with every page filled in. Switch back to Personal "
+              "from the sidebar.", None, "Generate demo", ":material/play_arrow:")]
+    cols = st.columns(3)
+    for col, (n, title, text, page, cta, icon) in zip(cols, CARDS):
+        with col, st.container(border=True):
+            st.html(f"<div style='color:var(--accent);font-weight:700;font-size:.8rem'>STEP {n}</div>"
+                    f"<div style='font-weight:600;font-size:1.05rem;margin:.25rem 0'>{title}</div>"
+                    f"<div style='color:var(--muted);font-size:.85rem;min-height:3.6rem'>{text}</div>")
+            if page:
+                st.page_link(page, label=cta, icon=icon)
+            elif profile_name() != "demo":
+                if st.button(cta, icon=icon, type="primary", key="welcome_demo"):
+                    build_demo()
+            else:
+                st.caption("You are on the demo profile.")
+    st.html("<div style='color:var(--muted);font-size:.8rem;margin-top:1rem'>Guides: docs/USER_GUIDE.md · "
+            "supported formats: docs/FORMATS.md · github.com/gitpouledauph/finmon</div>")
     st.stop()
 
 nw = b.networth.copy()

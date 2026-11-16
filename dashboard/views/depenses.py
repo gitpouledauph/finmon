@@ -9,7 +9,7 @@ b = bundle()
 st.title("Spending")
 tx = b.tx
 if tx.empty:
-    empty_state("opérations bancaires")
+    empty_state("bank transactions")
     st.stop()
 
 # ------------------------------------------------------------- filtres

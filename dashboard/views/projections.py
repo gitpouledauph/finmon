@@ -15,7 +15,7 @@ from finmon.analytics import projection as pj
 b = bundle()
 st.title("Projections & goals")
 if not b.allocation:
-    empty_state()
+    empty_state("data")
     st.stop()
 
 # ------------------------------------------------------------- inputs from the data

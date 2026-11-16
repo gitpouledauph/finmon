@@ -11,7 +11,7 @@ b = bundle()
 head, right = st.columns([2, 3], vertical_alignment="bottom")
 head.title("Allocation")
 if not b.allocation:
-    empty_state()
+    empty_state("data")
     st.stop()
 scope = right.segmented_control("Scope", ["Investments", "Total wealth"], default="Investments",
                                 label_visibility="collapsed") or "Investments"

@@ -64,11 +64,29 @@ def period_picker(key: str = "period", default: str = "1Y") -> str:
                                 label_visibility="collapsed") or default
 
 
-def empty_state(what: str = "données") -> None:
-    st.info(
-        f"Pas encore de {what}. Importez vos exports dans **Données & imports**, "
-        "ou passez sur le profil **Démo** dans la barre latérale pour voir le dashboard rempli."
-    )
+def build_demo() -> None:
+    """Generate the synthetic demo profile and switch to it."""
+    from finmon import demo
+
+    with st.spinner("Building demo data…"):
+        demo.build()
+    st.session_state["profile"] = "demo"
+    invalidate()
+    st.rerun()
+
+
+def empty_state(what: str = "data") -> None:
+    """Short English empty state with the three ways to get started."""
+    st.html(f"<div style='background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 18px;"
+            f"margin:.4rem 0 .8rem 0'><div style='font-weight:600'>No {what} yet</div>"
+            f"<div style='color:var(--muted);font-size:.85rem;margin-top:.2rem'>Import your history, add an account "
+            f"by hand, or explore the demo profile.</div></div>")
+    c1, c2, c3, _ = st.columns([1, 1, 1, 2])
+    c1.page_link("views/donnees.py", label="Import data", icon=":material/upload:")
+    c2.page_link("views/saisie.py", label="Add an account", icon=":material/add:")
+    if profile_name() != "demo" and c3.button("Explore the demo", icon=":material/play_arrow:", type="tertiary",
+                                             key=f"demo_{what}"):
+        build_demo()
 
 
 # ------------------------------------------------------------------ alertes

@@ -11,7 +11,7 @@ st.title("Data & imports")
 profile = config.get_profile(profile_name())
 db = get_db()
 if profile.name == "demo":
-    st.warning("Vous êtes sur le profil **Démo**. Repassez sur « Mes données » dans la barre latérale pour importer vos fichiers.")
+    st.warning("You are on the **Demo** profile. Switch to Personal in the sidebar to import your files.")
 
 tab_imp, tab_inst, tab_state, tab_exp = st.tabs(
     ["Import", "Securities", "Status", "Export"])
@@ -20,21 +20,19 @@ tab_imp, tab_inst, tab_state, tab_exp = st.tabs(
 with tab_imp:
     from finmon import manual
 
-    st.markdown(
-        "**Une seule fois** : importez l'historique de chaque compte. Ensuite, ajoutez vos nouvelles opérations "
-        "dans **Saisir une opération** — plus aucune connexion n'est nécessaire. "
-        "Le format est reconnu automatiquement et ré-importer un fichier ne crée pas de doublons.")
-    with st.expander("Which file for each account (FR)", expanded=True):
+    st.caption("Import each account's history once; afterwards add new trades in Transactions. Formats are detected "
+               "from the content and re-imports never create duplicates.")
+    with st.expander("Which file for each account (guide in French)", expanded=False):
         st.markdown((ROOT / "docs" / "GUIDE_CSV.md").read_text(encoding="utf-8"))
-    st.download_button("Modèle CSV finmon (pour tout autre courtier ou une saisie en masse)",
+    st.download_button("Download the CSV template (any other broker, bulk entry)",
                        manual.template_csv().encode("utf-8-sig"), file_name="modele-finmon.csv", mime="text/csv")
-    hint = st.radio("Pour un fichier Boursorama de titres (positions / mouvements), il s'agit du…",
-                    ["PEA", "Compte-titres (CTO)"], horizontal=True)
-    files = st.file_uploader("Fichiers CSV ou Excel", type=["csv", "txt", "xlsx"], accept_multiple_files=True)
+    hint = st.radio("Boursorama securities file (positions / movements) belongs to",
+                    ["PEA", "Brokerage account (CTO)"], horizontal=True)
+    files = st.file_uploader("CSV or Excel files", type=["csv", "txt", "xlsx"], accept_multiple_files=True)
     if files and st.button("Import", type="primary"):
         from finmon.sync import import_any
 
-        with st.spinner("Import (les cours historiques sont téléchargés pour valoriser crypto et devises)…"):
+        with st.spinner("Importing (price history is downloaded to value crypto and currencies)…"):
             for f in files:
                 dest = profile.archive / "uploads" / f"{datetime.now():%Y%m%d-%H%M%S}_{f.name}"
                 dest.parent.mkdir(parents=True, exist_ok=True)
@@ -42,7 +40,7 @@ with tab_imp:
                 try:
                     kind, n = import_any(db, dest, account_hint="pea" if hint == "PEA" else "cto",
                                          online=profile.name != "demo")
-                    st.success(f"{f.name} : reconnu comme « {kind} », {n} nouvelles lignes.")
+                    st.success(f"{f.name}: detected as {kind}, {n} new rows.")
                 except Exception as e:
                     db.log("upload", f.name, 0, "error", str(e))
                     st.error(f"{f.name} : {e}")
@@ -58,19 +56,19 @@ with tab_imp:
             with st.expander("Import warnings"):
                 st.dataframe(warn, hide_index=True, width="stretch")
     st.divider()
-    st.markdown(f"Autre possibilité : copier les fichiers dans `{profile.inbox}` puis cliquer :")
+    st.markdown(f"Or copy files to `{profile.inbox}` and import the inbox:")
     c1, c2 = st.columns(2)
-    if c1.button("Importer la boîte de dépôt"):
+    if c1.button("Import inbox"):
         from finmon.sync import import_inbox
 
-        for line in import_inbox(profile, db, online=profile.name != "demo") or ["Boîte de dépôt vide."]:
+        for line in import_inbox(profile, db, online=profile.name != "demo") or ["Inbox is empty."]:
             st.write(line)
         invalidate()
-    if c2.button("Mettre à jour l'historique des cours & changes", disabled=profile.name == "demo",
-                 help="Seuls les tickers et paires de devises sont envoyés à Yahoo Finance."):
+    if c2.button("Refresh price & FX history", disabled=profile.name == "demo",
+                 help="Only tickers and currency pairs are sent to Yahoo Finance."):
         from finmon.sync import refresh_prices
 
-        with st.spinner("Téléchargement des cours…"):
+        with st.spinner("Downloading prices…"):
             for line in refresh_prices(db):
                 st.write(line)
         invalidate()
@@ -81,8 +79,7 @@ with tab_inst:
     if inst.empty:
         st.info("Aucun titre pour l'instant.")
     else:
-        st.caption("Ticker Yahoo utilisé pour les cours, classe d'actif et expositions (JSON). "
-                   "Une ligne modifiée ici est marquée « manuel » et n'est plus écrasée automatiquement.")
+        st.caption("Yahoo ticker, asset class and exposures (JSON). Edited lines are marked manual and never overwritten.")
         cols = ["isin", "name", "ticker", "currency", "asset_class", "exposure", "regions", "sectors", "resolved_by"]
         ed = st.data_editor(inst[cols], hide_index=True, width="stretch", disabled=["isin", "resolved_by"],
                             column_config={"asset_class": st.column_config.SelectboxColumn(
@@ -104,7 +101,7 @@ with tab_inst:
                 changed["region"] = [max(json.loads(r or '{"Autre":1}'), key=json.loads(r or '{"Autre":1}').get) for r in changed["regions"]]
                 changed["sector"] = None
                 db.upsert("instruments", changed, mode="replace")
-                st.success(f"{len(changed)} titre(s) mis à jour. Pensez à « Mettre à jour cours » si le ticker a changé.")
+                st.success(f"{len(changed)} security(ies) updated. Refresh prices if a ticker changed.")
                 invalidate()
 
 # ------------------------------------------------------------- état
@@ -124,8 +121,8 @@ with tab_state:
     if hidden:
         for k, v in hidden.items():
             c1, c2 = st.columns([12, 2], vertical_alignment="center")
-            c1.caption(f"{v['text']} — masquée le {pd.Timestamp(v['ts']):%d/%m/%Y}")
-            if c2.button("Réafficher", key=f"undismiss-{k}", width="stretch"):
+            c1.caption(f"{v['text']} — hidden {pd.Timestamp(v['ts']):%d %b %Y}")
+            if c2.button("Restore", key=f"undismiss-{k}", width="stretch"):
                 set_dismissed([v["text"]], hide=False)
                 st.rerun()
     else:
@@ -135,10 +132,10 @@ with tab_state:
 with tab_exp:
     from finmon.data import export_excel
 
-    st.markdown("Exporte positions, opérations classées, dépenses par mois, patrimoine et allocation dans un classeur Excel.")
+    st.markdown("Positions, classified transactions, monthly spending, net worth and allocation in one Excel workbook.")
     if st.button("Build Excel export"):
         buf = io.BytesIO()
         export_excel(bundle(), buf)
-        st.download_button("Télécharger", buf.getvalue(), file_name=f"finmon-{datetime.now():%Y%m%d}.xlsx",
+        st.download_button("Download", buf.getvalue(), file_name=f"finmon-{datetime.now():%Y%m%d}.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    st.caption(f"La base complète est un simple fichier SQLite : `{profile.db_path}`")
+    st.caption(f"The whole database is one SQLite file: `{profile.db_path}`")
