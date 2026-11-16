@@ -78,7 +78,7 @@ rules:
   - {pattern: "SUNDAY\\*|ZENCHEF|THEFORK|LA FOURCHETTE|COFFEE|KAFFE|BAKERY", category: Restaurants & bars}
   - {pattern: "TRADING ?212", category: Épargne & investissement}
   - {pattern: "EGYM|WELLPASS|GYMLIB|CLASSPASS|SHOTGUN|BILLETREDUC|FNAC BILLET|DICE\\.FM", category: Loisirs & culture}
-  - {pattern: "LIBRAIRIE CENTRALE|CONVERSE|NIKE|ADIDAS|AIME LEON DORE|COS |UNIQLO|VEEPEE|VINTED|ZARA", category: Shopping}
+  - {pattern: "CONVERSE|NIKE|ADIDAS|AIME LEON DORE|COS |UNIQLO|VEEPEE|VINTED|ZARA", category: Shopping}
   - {pattern: "RETRAIT DAB|RET DAB|RETRAIT ", category: Retraits espèces}
   - {pattern: "COTISATION|FRAIS |COMMISSION|AGIOS|INTERETS DEBITEURS", category: Banque & frais}
   - {pattern: "DON |CROIX ROUGE|UNICEF|MSF|LEETCHI|CAGNOTTE", category: Cadeaux & dons}
