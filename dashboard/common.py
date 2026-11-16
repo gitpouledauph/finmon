@@ -276,7 +276,7 @@ def adjustments_editor(months: list, key: str, default_month=None) -> None:
         amt = f3.number_input("Montant (± €)", step=10.0, format="%.2f",
                               help="Dépenses : −875 réduit les dépenses du mois de 875 €, +100 les augmente. "
                                    "Revenus : +500 ajoute 500 € de revenus.")
-        lab = f4.text_input("Explication", placeholder="ex. remboursement d'un ami pour le voyage")
+        lab = f4.text_input("Explication", placeholder="e.g. refund from a friend for the trip")
         if st.form_submit_button("Ajouter l'ajustement") and amt:
             db.upsert("manual_adjustments", pd.DataFrame([{
                 "id": uuid.uuid4().hex[:10], "month": pd.Timestamp(m).strftime("%Y-%m"),

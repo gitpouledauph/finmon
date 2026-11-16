@@ -74,7 +74,7 @@ _QTY_RE = re.compile(r"^\s*([-+]?[\d.,]+(?:[eE][-+]?\d+)?)\s*([A-Z0-9]*)\s*$")
 
 
 def _qty(s: str) -> tuple[float | None, str]:
-    """« 0.00100BTC » -> (0.00100, "BTC")."""
+    """« 0.00100BTC » -> (0.001, "BTC")."""
     m = _QTY_RE.match(str(s).replace(" ", ""))
     if not m:
         return None, ""

@@ -181,7 +181,7 @@ def test_ibkr_french_statement(tmp_path):
     n, warn = ibkr.import_statement(db, text, online=False)
     assert n == 1
     dep = db.read("SELECT kind, amount, date FROM trades").iloc[0]
-    assert (dep["kind"], dep["amount"], dep["date"]) == ("deposit", 100.0, "2025-03-14")
+    assert (dep["kind"], dep["amount"], dep["date"]) == ("deposit", 250.0, "2025-03-14")
 
 
 def test_binance_spot_trades_french(tmp_path):
@@ -195,13 +195,13 @@ def test_binance_spot_trades_french(tmp_path):
     led = binance.spot_to_ledger(df)
     n, warn = binance.import_ledger(db, led, online=False)
     t = db.read("SELECT date, kind, isin, quantity, amount FROM trades ORDER BY date, kind")
-    btc_eur = t[(t["date"] == "2026-02-06") & (t["kind"] == "buy")]
-    assert btc_eur["quantity"].iloc[0] == pytest.approx(0.00100 + 0.00800)          # 2 exécutions, 1 ordre
-    assert btc_eur["amount"].iloc[0] == pytest.approx(-(60.00 + 480.00))   # montant EUR exact
+    btc_eur = t[(t["date"] == "2026-02-10") & (t["kind"] == "buy")]
+    assert btc_eur["quantity"].iloc[0] == pytest.approx(0.001 + 0.008)          # 2 exécutions, 1 ordre
+    assert btc_eur["amount"].iloc[0] == pytest.approx(-(60.0 + 480.0))   # montant EUR exact
     eth_usdc = t[(t["isin"] == "CRYPTO-ETH") & (t["kind"] == "buy")]
-    assert eth_usdc["amount"].iloc[0] == pytest.approx(-1000.00 / 1.25)          # USDC = liquidités en USD
-    sell = t[(t["kind"] == "sell") & (t["date"] == "2026-01-19")]
-    assert sell["amount"].iloc[0] == pytest.approx(1350.00 / 1.25)
+    assert eth_usdc["amount"].iloc[0] == pytest.approx(-1000.0 / 1.25)          # USDC = liquidités en USD
+    sell = t[(t["kind"] == "sell") & (t["date"] == "2026-01-15")]
+    assert sell["amount"].iloc[0] == pytest.approx(1350.0 / 1.25)
     assert db.read("SELECT COUNT(*) n FROM trades WHERE isin = 'CRYPTO-USDC'")["n"][0] == 0
 
 
@@ -218,7 +218,7 @@ def test_ibkr_french_2026_trades_and_exchanges(tmp_path):
     inst = db.read("SELECT isin, ticker FROM instruments").set_index("isin")["ticker"]
     assert inst["IE00BYZK4552"] == "RBOT.MI" and inst["US02079K3059"] == "GOOGL"   # bourse d'achat
     snap = db.read("SELECT isin, quantity, date FROM position_snapshots")
-    assert set(snap["date"]) == {"2026-11-13"} and len(snap) == 2
+    assert set(snap["date"]) == {"2026-10-31"} and len(snap) == 2
 
 
 def test_ibkr_exchange_to_yahoo():
@@ -270,12 +270,12 @@ def test_binance_transactions_french_converts(tmp_path):
     n, warn = binance.import_ledger(db, df, online=False)
     t = db.read("SELECT date, kind, isin, quantity, amount FROM trades ORDER BY date, kind")
     eth_buys = t[(t["isin"] == "CRYPTO-ETH") & (t["kind"] == "buy")]
-    assert list(eth_buys["amount"].round(2)) == [-99.0, -10.0]       # Convert EUR et achat par carte (6 s d'écart)
+    assert list(eth_buys["amount"].round(2)) == [-150.0, -20.0]       # Convert EUR et achat par carte (6 s d'écart)
     sol = t[t["isin"] == "CRYPTO-SOL"]
     assert len(sol) == 1 and sol["quantity"].iloc[0] == pytest.approx(12.5)
-    assert sol["amount"].iloc[0] == pytest.approx(-1000 / 1.25)       # jambes à 1 s d'écart regroupées
+    assert sol["amount"].iloc[0] == pytest.approx(-900 / 1.25)       # jambes à 1 s d'écart regroupées
     assert not [w for w in warn if "supérieure" in w]                 # historique complet : pas de vente à découvert
-    assert t[t["kind"] == "deposit"]["amount"].sum() == 99
+    assert t[t["kind"] == "deposit"]["amount"].sum() == 150
 
 
 def test_boursorama_export_operations_fr_and_broker_link(tmp_path):
@@ -322,17 +322,17 @@ def test_share_factor_and_adjustments(tmp_path):
     df = read_csv_auto(FIX / "boursorama_export_operations_fr.csv")
     boursorama.import_operations(db, df, source="ops.csv")
     tx = db.read("SELECT * FROM cash_transactions")
-    suit = tx.loc[tx["label"].str.contains("LIBRAIRIE CENTRALE"), "id"].iloc[0]
+    suit = tx.loc[tx["label"].str.contains("LIBRAIRIE"), "id"].iloc[0]
     set_override(db, suit, category="Shopping")
     set_override(db, suit, factor=0.5)                       # ne doit pas effacer la catégorie
     ov = db.read("SELECT * FROM category_overrides").set_index("tx_id")
     assert ov.loc[suit, "category"] == "Shopping" and ov.loc[suit, "factor"] == 0.5
     accounts = db.read("SELECT * FROM accounts")
     cl = budget.classify(tx, db.table("category_overrides"), dict(zip(accounts["id"], accounts["type"])))
-    assert cl.set_index("id").loc[suit, "amount"] == pytest.approx(-261.0)
+    assert cl.set_index("id").loc[suit, "amount"] == pytest.approx(-90.0)
     adj = pd.DataFrame([{"id": "a", "month": "2026-02", "target": "revenus", "amount": 1000.0, "label": "Prime"},
                         {"id": "b", "month": "2026-02", "target": "depenses", "amount": -100.0, "label": "Remb."}])
     cl = budget.add_adjustments(cl, adj, accounts)
     g = budget.global_monthly(cl).loc["2026-02-01"]
     assert g["exceptionnel"] == 1000
-    assert g["depenses"] == pytest.approx(4.29 + 261.0 - 100.0)   # carte (part 50 %) − ajustement
+    assert g["depenses"] == pytest.approx(12.40 + 90.0 - 100.0)   # carte (part 50 %) − ajustement

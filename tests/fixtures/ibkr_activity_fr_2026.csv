@@ -1,7 +1,7 @@
 Statement,Header,Nom champ,Valeur champ
 Statement,Data,BrokerName,Interactive Brokers Ireland Limited
 Statement,Data,Title,Relevé de compte
-Statement,Data,Period,"Janvier 1, 2026 - Novembre 13, 2026"
+Statement,Data,Period,"Janvier 1, 2026 - Octobre 31, 2026"
 Informations du compte,Header,Nom champ,Valeur champ
 Informations du compte,Data,Nom,Exemple Utilisateur
 Informations du compte,Data,Compte,U00000000
@@ -16,16 +16,16 @@ Transactions,Total,,Actions,EUR,,,,,,-182,-3,185,0,0.4,
 Transactions,Data,Order,Actions,USD,GOOGL,"2026-09-11, 15:30:00",2,350,349.54,-700,-1,701,0,-0.9,O
 Transactions,Total,,Actions,USD,,,,,,-700,-1,701,0,-0.9,
 Transactions,Header,DataDiscriminator,Catégorie d'actifs,Devise,Symbole,Date/Heure,Quantité,Prix trans.,,Produit,Comm en EUR,,,Évaluation au prix du marché en EUR,Code
-Transactions,Data,Order,Forex,USD,EUR.USD,"2026-09-18, 09:30:06","-560.00",1.25,,700,0,,,-0.5,AFx
+Transactions,Data,Order,Forex,USD,EUR.USD,"2026-09-11, 15:30:01","-560.00",1.25,,700,0,,,-0.5,AFx
 Transactions,Total,,Forex,USD,,,,,,700,0,,,-0.5,
 Dépôts et retraits,Header,Devise,Date de règlement,Description,Montant
-Dépôts et retraits,Data,EUR,2026-08-21,Transfert électronique de fonds,1000
+Dépôts et retraits,Data,EUR,2026-08-03,Transfert électronique de fonds,1000
 Dépôts et retraits,Data,Total,,,1000
 Retenues d'impôts,Header,Devise,Date,Description,Montant,Code
-Retenues d'impôts,Data,EUR,2026-10-06,Withholding @ 20% sur Intérêt créditeur pour Sep-2026,-0.01,
+Retenues d'impôts,Data,EUR,2026-10-02,Withholding @ 20% sur Intérêt créditeur pour Sep-2026,-0.01,
 Retenues d'impôts,Data,Total,,,-0.01,
 Intérêt,Header,Devise,Date,Description,Montant
-Intérêt,Data,EUR,2026-10-05,EUR Intérêt créditeur pour Sep-2026,0.04
+Intérêt,Data,EUR,2026-10-01,EUR Intérêt créditeur pour Sep-2026,0.04
 Intérêt,Data,Total,,,0.04
 Informations instrument financier,Header,Catégorie d'actifs,Symbole,Description,Conid,ID Titre,Underlying,Liste des Bourses,Multiplicateur,Type,Code
 Informations instrument financier,Data,Actions,GOOGL,ALPHABET INC-CL A,208813719,US02079K3059,GOOGL,NASDAQ,1,COMMON,

@@ -7,9 +7,9 @@ Informations du compte,Data,Nom,Exemple Utilisateur
 Informations du compte,Data,Compte,U00000000
 Informations du compte,Data,Devise de base,EUR
 Actif net,Header,Classe d'actif,Total précédent,Actuel long,Actuel short,Total actuel,Variation
-Actif net,Data,Trésorerie,0,100,0,100,100
+Actif net,Data,Trésorerie,0,250,0,250,250
 Dépôts et retraits,Header,Devise,Date de règlement,Description,Montant
-Dépôts et retraits,Data,EUR,2025-03-14,Transfert électronique de fonds,100
-Dépôts et retraits,Data,Total,,,100
+Dépôts et retraits,Data,EUR,2025-03-14,Transfert électronique de fonds,250
+Dépôts et retraits,Data,Total,,,250
 Codes,Header,Code,Signification,Code (Cont.),Signification (Cont.)
 Codes,Data,O,Ouverture de position

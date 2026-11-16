@@ -1,17 +1,17 @@
 Identifiant utilisateur,Durée,Compte,Opération,Jeton,Change,Remarque
-100000000,2025-06-12 22:52:10,Spot,Deposit,EUR,99,
-100000000,2025-06-12 22:56:54,Spot,Binance Convert,ETH,0.06,
-100000000,2025-06-12 22:56:54,Spot,Binance Convert,EUR,-99,
-100000000,2025-11-19 21:42:33,Spot,Buy Crypto With Fiat,EUR,-10,Via CashBalance - Wallet/N0000000000000000001
-100000000,2025-11-19 21:42:39,Spot,Buy Crypto With Fiat,ETH,0.008,Via CashBalance - Wallet/N0000000000000000001
-100000000,2026-01-19 12:20:24,Spot,Transaction Revenue,USDC,1200.00,
-100000000,2026-01-19 12:20:24,Spot,Transaction Sold,ETH,-0.04,
-100000000,2026-01-19 12:20:24,Spot,Transaction Fee,USDC,-1.20,
-100000000,2026-02-01 19:41:45,Funding,Binance Convert,USDC,100,
-100000000,2026-02-01 19:41:45,Spot,Binance Convert,ETH,-0.003,
-100000000,2026-02-01 19:41:48,Spot,Transfer Between Spot and Funding,USDC,100,
-100000000,2026-02-01 19:41:49,Funding,Transfer Between Spot and Funding,USDC,-100,
-100000000,2026-06-09 20:34:36,Spot,Binance Convert,SOL,12.5,
-100000000,2026-06-09 20:34:37,Spot,Binance Convert,USDC,-1000,
-100000000,2026-06-09 20:34:37,Spot,Binance Convert,USDC,899.5,
-100000000,2026-06-09 20:34:37,Funding,Binance Convert,USDC,-899.5,
+100000000,2025-06-02 10:00:00,Spot,Deposit,EUR,150,
+100000000,2025-06-02 10:05:00,Spot,Binance Convert,ETH,0.06,
+100000000,2025-06-02 10:05:00,Spot,Binance Convert,EUR,-150,
+100000000,2025-11-03 18:00:00,Spot,Buy Crypto With Fiat,EUR,-20,Via CashBalance - Wallet/N0000000000000000001
+100000000,2025-11-03 18:00:06,Spot,Buy Crypto With Fiat,ETH,0.008,Via CashBalance - Wallet/N0000000000000000001
+100000000,2026-01-12 15:00:00,Spot,Transaction Revenue,USDC,1200,
+100000000,2026-01-12 15:00:00,Spot,Transaction Sold,ETH,-0.04,
+100000000,2026-01-12 15:00:00,Spot,Transaction Fee,USDC,-1.2,
+100000000,2026-02-02 12:00:00,Funding,Binance Convert,USDC,100,
+100000000,2026-02-02 12:00:00,Spot,Binance Convert,ETH,-0.003,
+100000000,2026-02-02 12:00:03,Spot,Transfer Between Spot and Funding,USDC,100,
+100000000,2026-02-02 12:00:04,Funding,Transfer Between Spot and Funding,USDC,-100,
+100000000,2026-05-04 09:00:00,Spot,Binance Convert,SOL,12.5,
+100000000,2026-05-04 09:00:01,Spot,Binance Convert,USDC,-900,
+100000000,2026-05-04 09:00:01,Spot,Binance Convert,USDC,899.5,
+100000000,2026-05-04 09:00:01,Funding,Binance Convert,USDC,-899.5,
