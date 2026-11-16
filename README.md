@@ -50,11 +50,11 @@ Requires Python 3.11+ (tested on 3.13). In the sidebar, switch between **Persona
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Architecture, data model, adding an importer or a page, tests |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Fork & pull-request workflow |
 
-## Access, forks and contributions
+## Forks and contributions
 
-The repository is private. To get access, open the repository link and ask the owner to add you
-(GitHub username). Collaborators have **read** access: you can clone and **fork**, but cannot push to
-`main`. Changes go through a pull request from your fork — see [CONTRIBUTING.md](CONTRIBUTING.md).
+The repository is public: anyone can clone it or **fork** it and run Meridian on their own data.
+`main` is protected — nobody pushes to it directly; changes arrive as pull requests from forks and need
+the owner's approval. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Privacy
 
