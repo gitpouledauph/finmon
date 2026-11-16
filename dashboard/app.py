@@ -19,6 +19,7 @@ P = {
     "home": st.Page("views/accueil.py", title="Net worth", icon=":material/space_dashboard:", default=True),
     "perf": st.Page("views/investissements.py", title="Performance", icon=":material/show_chart:"),
     "alloc": st.Page("views/allocation.py", title="Allocation", icon=":material/donut_large:"),
+    "market": st.Page("views/marche.py", title="Market watch", icon=":material/monitoring:"),
     "fees": st.Page("views/frais.py", title="Fee scanner", icon=":material/percent:"),
     "proj": st.Page("views/projections.py", title="Projections & goals", icon=":material/flag:"),
     "sim": st.Page("views/simulation.py", title="Line simulator", icon=":material/insights:"),
@@ -32,7 +33,7 @@ P = {
 }
 pages = {
     "Overview": [P["home"]],
-    "Investments": [P["perf"], P["alloc"], P["fees"], P["proj"], P["sim"], P["entry"]],
+    "Investments": [P["perf"], P["alloc"], P["market"], P["fees"], P["proj"], P["sim"], P["entry"]],
     "Cash flow": [P["cash"], P["month"], P["spend"], P["income"], P["travel"]],
     "Settings": [P["data"]],
 }

@@ -5,15 +5,15 @@ import pandas as pd
 import plotly.graph_objects as go
 
 # Palette catégorielle, ordre fixe (validée daltonisme sur paires adjacentes).
-SERIES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"]
-OTHER = "#a8a7a1"
-GOOD, BAD = "#0ca30c", "#d03b3b"
-MUTED = "#898781"
-GRID = "rgba(137,135,129,0.25)"
+SERIES = ["#7d9bd6", "#c9a96e", "#5fae9b", "#a08fcf", "#d0876f", "#78b4cf", "#a7b27c", "#8e96a8"]
+OTHER = "#5b6273"
+GOOD, BAD = "#4fb286", "#e06c75"
+MUTED = "#8a93a6"
+GRID = "rgba(138,147,166,0.14)"
 # Rampe séquentielle (une teinte) : du plus faible au plus fort, contre le fond.
 # En sombre, les faibles valeurs se fondent dans le fond et les fortes s'éclaircissent.
 SEQ_LIGHT = [[0, "#f4f8fd"], [0.25, "#b7d3f6"], [0.5, "#6da7ec"], [0.75, "#2a78d6"], [1, "#104281"]]
-SEQ_DARK = [[0, "#1a2433"], [0.25, "#1d4a85"], [0.5, "#2a78d6"], [0.75, "#6da7ec"], [1, "#cfe1f9"]]
+SEQ_DARK = [[0, "#141a26"], [0.25, "#24355a"], [0.5, "#3f5a93"], [0.75, "#7d9bd6"], [1, "#d6e0f5"]]
 THEME = "dark"  # le dashboard est en mode sombre (.streamlit/config.toml)
 FONT = 'Inter, system-ui, -apple-system, "Segoe UI", sans-serif'
 
@@ -182,8 +182,8 @@ def treemap(df: pd.DataFrame, path_cols: list[str], value_col: str = "value", he
 # --------------------------------------------------------------------------
 # Professional figures (Meridian)
 # --------------------------------------------------------------------------
-INK, INK_MUTED, SURFACE = "#e9ecf1", "#8b93a3", "#11141a"
-CAT = ["#5b8cff", "#f2a65a", "#34c38f", "#c48bff", "#ef6f9a", "#4fc9d9", "#d9c55a", "#8f9bb3"]
+INK, INK_MUTED, SURFACE = "#e6e9ef", "#8a93a6", "#121620"
+CAT = SERIES
 
 
 def _clean(fig: go.Figure, height: int, legend: bool = True) -> go.Figure:
@@ -191,7 +191,7 @@ def _clean(fig: go.Figure, height: int, legend: bool = True) -> go.Figure:
                       paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", separators=", ",
                       showlegend=legend, legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0, title=None,
                                                      font=dict(color=INK_MUTED, size=11)),
-                      hoverlabel=dict(font_family=FONT, bgcolor="#1a1f29", bordercolor="#2a3140"))
+                      hoverlabel=dict(font_family=FONT, bgcolor="#161b26", bordercolor="#2a3242"))
     return fig
 
 
@@ -232,7 +232,7 @@ def perf_treemap(df: pd.DataFrame, height=460) -> go.Figure:
     ids, labels, parents, values, colors, texts, hover = [], [], [], [], [], [], []
     for g, sub in d.groupby("group"):
         ids.append(f"g:{g}"); labels.append(g); parents.append(""); values.append(sub["value"].sum())
-        colors.append("#151922"); texts.append(""); hover.append(f"{g}<br>{eur(sub['value'].sum())}")
+        colors.append("#161b26"); texts.append(""); hover.append(f"{g}<br>{eur(sub['value'].sum())}")
     for r, p in zip(d.itertuples(), perf):
         ids.append(f"l:{r.group}:{r.name}"); labels.append(r.name); parents.append(f"g:{r.group}")
         values.append(r.value); colors.append(p)
@@ -243,7 +243,7 @@ def perf_treemap(df: pd.DataFrame, height=460) -> go.Figure:
         ids=ids, labels=labels, parents=parents, values=values, branchvalues="total", text=texts,
         texttemplate="%{text}", hovertext=hover, hovertemplate="%{hovertext}<extra></extra>",
         marker=dict(colors=[c if isinstance(c, float) else 0 for c in colors],
-                    colorscale=[[0, "#c0392b"], [0.35, "#7a2f35"], [0.5, "#2a2f3a"], [0.65, "#1f6b4f"], [1, "#27ae60"]],
+                    colorscale=[[0, "#b4545c"], [0.35, "#5e3439"], [0.5, "#232a37"], [0.65, "#2f5e4b"], [1, "#4fb286"]],
                     cmin=-0.5, cmax=0.5, line=dict(color=SURFACE, width=2), showscale=False),
         root_color="rgba(0,0,0,0)", tiling=dict(pad=2), pathbar=dict(visible=False),
         textfont=dict(color="#f3f5f8", size=12),

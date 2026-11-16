@@ -15,7 +15,8 @@ CREATE TABLE IF NOT EXISTS accounts (
     name TEXT NOT NULL,
     type TEXT NOT NULL,          -- courant | livret | pea | cto | assurance_vie | crypto | epargne_salariale | autre
     currency TEXT NOT NULL DEFAULT 'EUR',
-    rate REAL                    -- taux annuel en % (livrets), facultatif
+    rate REAL,                   -- taux annuel en % (livrets), facultatif
+    tracking TEXT                -- holdings | manual (comptes d'investissement)
 );
 
 -- Opérations des comptes bancaires (courant, livrets, cash Trade Republic)
@@ -172,6 +173,9 @@ class DB:
             cols = {r[1] for r in con.execute("PRAGMA table_info(accounts)")}
             if "rate" not in cols:
                 con.execute("ALTER TABLE accounts ADD COLUMN rate REAL")
+            if "tracking" not in cols:
+                # holdings : suivi ligne à ligne (cours, transactions) ; manual : valeur et montant investi saisis
+                con.execute("ALTER TABLE accounts ADD COLUMN tracking TEXT")
             ov = {r[1] for r in con.execute("PRAGMA table_info(category_overrides)")}
             if ov and "factor" not in ov:
                 # Part d'une dépense attribuée à soi (ex. 0,5 pour une dépense partagée en deux).

@@ -130,7 +130,7 @@ else:
     years = [pd.Timestamp.today().year + y for y in traj.index]
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=years, y=traj["high"], line=dict(width=0), showlegend=False, hoverinfo="skip"))
-    fig.add_trace(go.Scatter(x=years, y=traj["low"], fill="tonexty", fillcolor="rgba(57,135,229,0.15)",
+    fig.add_trace(go.Scatter(x=years, y=traj["low"], fill="tonexty", fillcolor="rgba(125,155,214,0.15)",
                              line=dict(width=0), name="Fourchette 10–90 %",
                              hovertemplate="%{y:,.0f} €<extra>Basse</extra>"))
     fig.add_trace(go.Scatter(x=years, y=traj["central"], name="Projection centrale",

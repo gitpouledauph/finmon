@@ -26,7 +26,7 @@ span = c2.segmented_control("Period", ["Since 1st salary", "12 m", "24 m"], defa
 refunds = c3.toggle("Net card refunds", value=False)
 
 g_all = budget.global_monthly(tx, deduct_refunds=refunds)
-last_data = tx.loc[~tx["source_cat"].isin(["étalé", "ajustement", "loyer fixe"]), "date"].max()
+last_data = budget.last_real_date(tx)
 g = g_all[g_all.index + pd.offsets.MonthEnd(0) <= last_data]
 g = g[(g["salaire"] != 0) | (g["depenses"] != 0)]
 if span == "Since 1st salary":
@@ -123,7 +123,7 @@ if sel_ev.selection.rows:
 # ------------------------------------------------------------- ledgers
 db = get_db()
 years = sorted(tx["date"].dt.year.unique(), reverse=True)
-tab_in, tab_out, tab_adj = st.tabs(["Inflows", "Outflows", "Manual adjustments"])
+tab_in, tab_out, tab_smooth, tab_adj = st.tabs(["Inflows", "Outflows", "Smoothing", "Manual adjustments"])
 
 MODES = {"Default": None, "Income": "income", "Smooth over months": "smooth", "Deduct from spending": "offset",
          "Ignore": "ignore"}
@@ -156,6 +156,8 @@ with tab_in:
         "Months": [int(_tr(i, "months", 12)) for i in raw["id"]],
         "Start": [str(_tr(i, "start", pd.Timestamp(d).strftime("%Y-%m"))) for i, d in zip(raw["id"], raw["date"])],
     }).sort_values("Amount", ascending=False)
+    led["Start"] = led["Start"].astype("string")
+    led["Months"] = led["Months"].astype("Int64")
     led_ed = st.data_editor(led, hide_index=True, width="stretch", key=f"in_ed_{yi}",
                             disabled=["id", "Date", "Label", "Amount", "Counted as"],
                             column_config={"id": None, "Date": st.column_config.DateColumn(format="DD/MM/YYYY"),
@@ -204,6 +206,56 @@ with tab_out:
                 set_override(db, rr.id, **fields)
         invalidate()
         st.rerun()
+
+with tab_smooth:
+    all_months = sorted({pd.Timestamp(x) for x in tx["month"].unique()}
+                        | {pd.Timestamp(last_data).to_period("M").to_timestamp() + pd.DateOffset(months=k) for k in range(1, 13)})
+    real = b.tx[b.tx["account_id"].map(types).isin(["courant", "autre"])
+                & ~b.tx["id"].astype(str).str.startswith(("spread-", "smooth-", "adj-", "loyer-fixe"))]
+    real = real[real["amount"].abs() >= 50]
+
+    def _smooth_form(kind: str, pool: pd.DataFrame, key: str):
+        with st.form(f"smooth_{key}", clear_on_submit=True, border=True):
+            st.markdown(f"**Smooth {kind}**")
+            pool = pool.sort_values("date", ascending=False)
+            opts = list(pool["id"])
+            lab = {r.id: f"{r.date:%d %b %Y} · {r.label[:48]} · {eur(r.amount, 2, sign=True)}" for r in pool.itertuples()}
+            f1, f2, f3 = st.columns([3, 1, 1.2])
+            pick = f1.selectbox("Transaction", opts, format_func=lambda i: lab.get(i, i)) if opts else None
+            n_m = f2.number_input("Months", min_value=1, max_value=36, value=12, step=1)
+            first = pool.set_index("id").loc[pick, "month"] if pick is not None else all_months[-1]
+            start = f3.selectbox("From", all_months, index=all_months.index(pd.Timestamp(first)) if pd.Timestamp(first) in all_months else 0,
+                                 format_func=lambda d: d.strftime("%b %Y"))
+            if st.form_submit_button("Apply", type="primary") and pick is not None:
+                db.upsert("income_treatment", pd.DataFrame([{"tx_id": pick, "mode": "smooth", "months": int(n_m),
+                                                             "start": start.strftime("%Y-%m")}]), mode="replace")
+                invalidate()
+                st.rerun()
+
+    s1, s2 = st.columns(2)
+    with s1:
+        _smooth_form("an inflow", real[real["amount"] > 0], "in")
+    with s2:
+        _smooth_form("an expense", real[(real["amount"] < 0) & (real["cat_type"] == "expense")], "out")
+    cur_s = db.read("SELECT * FROM income_treatment WHERE mode = 'smooth'")
+    if not cur_s.empty:
+        info = b.tx.set_index("id")
+        cur_s = cur_s[cur_s["tx_id"].isin(info.index)]
+        sv = pd.DataFrame({"Remove": False, "tx_id": cur_s["tx_id"],
+                           "Date": info.loc[cur_s["tx_id"], "date"].values, "Label": info.loc[cur_s["tx_id"], "label"].values,
+                           "Amount": info.loc[cur_s["tx_id"], "amount"].values, "Months": cur_s["months"].values,
+                           "From": cur_s["start"].values,
+                           "Per month": info.loc[cur_s["tx_id"], "amount"].values / cur_s["months"].values})
+        sed = st.data_editor(sv, hide_index=True, width="stretch", key="smooth_ed",
+                             disabled=["tx_id", "Date", "Label", "Amount", "Months", "From", "Per month"],
+                             column_config={"tx_id": None, "Date": st.column_config.DateColumn(format="DD/MM/YYYY"),
+                                            "Amount": st.column_config.NumberColumn(format="%+,.2f €"),
+                                            "Per month": st.column_config.NumberColumn(format="%+,.2f €")})
+        if st.button("Remove selected", key="smooth_rm"):
+            for r_ in sed[sed["Remove"]].itertuples(index=False):
+                db.execute("DELETE FROM income_treatment WHERE tx_id = ?", [r_.tx_id])
+            invalidate()
+            st.rerun()
 
 with tab_adj:
     adjustments_editor(list(tx["month"].unique()), "globale")

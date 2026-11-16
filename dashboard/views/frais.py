@@ -88,7 +88,7 @@ with r:
     yrs = list(range(0, 21))
     drag = [sum(fee_mod.fee_drag(v, x, y, r_assumed) for v, x in zip(d["value"], d["ter"])) for y in yrs]
     fig = go.Figure(go.Scatter(x=yrs, y=drag, fill="tozeroy", line=dict(color=charts.CAT[1], width=2),
-                               fillcolor="rgba(242,166,90,0.15)", hovertemplate="Year %{x}: %{y:,.0f} €<extra></extra>"))
+                               fillcolor="rgba(201,169,110,0.15)", hovertemplate="Year %{x}: %{y:,.0f} €<extra></extra>"))
     fig = charts.layout(fig, max(260, 34 * len(d) + 40), legend=False)
     fig.update_xaxes(ticksuffix=" y", dtick=5)
     plot(fig, key="fee_drag")

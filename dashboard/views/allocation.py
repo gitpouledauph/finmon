@@ -33,9 +33,9 @@ div = diversification(alloc, pf.current)
 c = st.columns([1.3, 1, 1, 1])
 with c[0]:
     sc = div["score"]
-    color = "#34c38f" if sc >= 70 else ("#f2a65a" if sc >= 45 else "#f06a6a")
+    color = "#4fb286" if sc >= 70 else ("#c9a96e" if sc >= 45 else "#e06c75")
     label = "Well diversified" if sc >= 70 else ("Moderately diversified" if sc >= 45 else "Concentrated")
-    st.html(f"<div style='background:#11141a;border:1px solid #1e232d;border-radius:12px;padding:12px 16px'>"
+    st.html(f"<div style='background:#121620;border:1px solid #1f2533;border-radius:12px;padding:12px 16px'>"
             f"<div class='fm-eyebrow'>Diversification score</div>"
             f"<div class='fm-score'><span class='v' style='color:{color}'>{sc:.0f}</span>"
             f"<span style='color:#8b93a3'>/ 100 · {label}</span></div></div>")
@@ -47,7 +47,7 @@ if div["top_name"]:
 bars = "".join(
     f"<div style='display:grid;grid-template-columns:120px 1fr 120px;gap:.8rem;align-items:center;margin:.35rem 0'>"
     f"<span style='font-size:.8rem;color:#c3c9d4'>{k}</span>"
-    f"<div class='fm-bar'><div style='width:{v * 100:.0f}%;background:{'#34c38f' if v >= .7 else '#f2a65a' if v >= .45 else '#f06a6a'}'></div></div>"
+    f"<div class='fm-bar'><div style='width:{v * 100:.0f}%;background:{'#4fb286' if v >= .7 else '#c9a96e' if v >= .45 else '#e06c75'}'></div></div>"
     f"<span style='font-size:.75rem;color:#8b93a3;text-align:right'>{div['effective'][k]:.1f} eff. / {SCORE_DIMS[k][0]:.0f}</span></div>"
     for k, v in div["parts"].items())
 with st.expander("Score breakdown", icon=":material/analytics:"):

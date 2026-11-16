@@ -1,104 +1,73 @@
 # Meridian — local wealth & spending intelligence
 
-_(package name: `finmon`)_
+Meridian is a private, **100 % local** alternative to wealth trackers such as Finary. It consolidates
+brokers, crypto exchanges, employee savings and bank accounts into one dashboard:
+net worth, investment performance (TWR / IRR, FX vs local attribution, benchmarks), allocation and
+diversification, fees, projections and goals, and a full cash-flow analysis of your bank statements.
 
-Moniteur **100 % local** de patrimoine, investissements et dépenses : un « Finary maison » qui tourne sur votre Mac.
-Les données viennent de fichiers (exports Boursorama, pytr pour Trade Republic) et vivent dans une base SQLite
-locale (`data/`, exclue de git). Seuls des identifiants publics (ISIN, tickers, paires de devises) partent vers
-Yahoo Finance pour récupérer cours et taux de change.
+Nothing is synchronised with your banks: you import exports **once**, then keep the data current with
+manual entries and monthly bank exports. Only public identifiers (tickers, ISINs, currency pairs) are sent
+to Yahoo Finance to fetch prices. Your data lives in a local SQLite file under `data/`, which is never committed.
 
-## Démarrage
+> Python package name: `finmon` · dashboard: Streamlit · data: SQLite
 
-```bash
-cd ~/Desktop/Draft/Monitoring_Investments
-/opt/homebrew/bin/python3.13 -m venv .venv-finmon      # déjà fait
-.venv-finmon/bin/pip install -r requirements.txt
-.venv-finmon/bin/python -m finmon demo                  # profil démo, sans réseau
-.venv-finmon/bin/python -m finmon dashboard             # ouvre http://localhost:8501
-```
+![pages](https://img.shields.io/badge/pages-14-7d9bd6) ![tests](https://img.shields.io/badge/tests-pytest-4fb286)
 
-Dans le dashboard, la barre latérale bascule entre **Mes données** et **Démo**.
+## Features
 
-## Alimenter avec vos données
-
-**1. Une seule fois : l'historique.** Dans **Données & imports › Import historique**, déposez :
-
-| Compte | Fichier |
+| Area | What you get |
 |---|---|
-| Binance | Historique des transactions (recommandé) ou Historique des trades Spot, en français ou anglais |
-| Interactive Brokers | Un *relevé d'activité* annuel CSV par année (français ou anglais) |
-| Trade Republic | `python -m finmon export-tr` (pytr, une seule fois), puis `rm -rf ~/.pytr` |
-| Boursorama | Export CSV des opérations (courant, livrets) ; positions et mouvements du PEA/CTO |
-| Autre | Modèle CSV finmon (téléchargeable dans le dashboard) |
+| **Net worth** | total and history by category, clickable breakdown category → account → lines |
+| **Performance** | value vs invested, total / unrealized / realized P&L, TWR & IRR, up to 4 benchmarks (MSCI World, S&P 500, Nasdaq-100, CAC 40…), return attribution local market vs currency, every closed trade |
+| **Allocation** | look-through by asset class, region, currency, sector, account type; diversification score /100; holdings map coloured by return |
+| **Market watch** | price chart of every underlying, 1D → 5Y, per chart |
+| **Fee scanner** | fund TER (Yahoo, editable), annual cost, 10/20-year fee drag, cheaper equivalent ETFs (PEA-aware), broker costs |
+| **Projections & goals** | net-worth projection by asset class, inflation, financial-independence year (4 % rule), savings goals |
+| **Cash flow** | salary, rent, spending, savings rate by month/year; inflow & outflow ledgers; smoothing over N months; manual adjustments |
+| **Monthly review** | any month vs 12-month average, last year or another month, by category |
+| **Spending / Travel** | categorisation rules, per-merchant rules from one dropdown, trip costs |
 
-Détail pas à pas : [docs/GUIDE_CSV.md](docs/GUIDE_CSV.md) · formats reconnus colonne par colonne : [docs/FORMATS.md](docs/FORMATS.md).
-
-**2. Ensuite : plus aucune connexion.** Chaque nouvelle opération (achat, vente, dividende, versement…)
-se saisit dans la page **➕ Saisir une opération** : compte, ticker Yahoo, date, quantité, prix, devise, frais.
-Le montant est converti en EUR au taux du jour et la ligne rejoint le portefeuille.
-
-**3. Cours en direct.** Le dashboard récupère le dernier cours de vos lignes (crypto en temps réel, actions
-avec ~15 min de différé selon la place) toutes les 1, 5 ou 15 minutes, et recalcule valeurs et PnL.
-
-Commandes utiles :
+## Quick start
 
 ```bash
-.venv-finmon/bin/python -m finmon import      # importe data/reel/inbox/**
-.venv-finmon/bin/python -m finmon export-tr   # historique Trade Republic (une fois)
-.venv-finmon/bin/python -m finmon prices      # historique + dernier cours + change
-.venv-finmon/bin/python -m finmon export      # classeur Excel dans data/reel/exports/
-.venv-finmon/bin/python -m finmon status
-./scripts/install_daily_sync.sh               # mise à jour quotidienne des cours (launchd)
+git clone https://github.com/gitpouledauph/finmon.git meridian && cd meridian
+python3 -m venv .venv-finmon && source .venv-finmon/bin/activate
+pip install -r requirements.txt
+python -m finmon demo          # optional: synthetic data to explore every page
+python -m finmon dashboard     # opens http://localhost:8501
 ```
 
-## Ce que montre le dashboard
+Requires Python 3.11+ (tested on 3.13). In the sidebar, switch between **Personal** and **Demo** profiles.
 
-- **Vue d'ensemble** — patrimoine net et son évolution (investissements / épargne réglementée / liquidités),
-  variation par compte, dépenses du mois vs moyenne, taux d'épargne, performance.
-- **Investissements** — valeur vs capital investi, performance TWR et TRI, comparaison à un indice,
-  positions (PRU, poids, plus-values), réalisé, dividendes, frais.
-  **Décomposition sous-jacent / change** : pour chaque titre, la plus-value latente est séparée entre la
-  performance du sous-jacent dans sa devise et l'effet EUR/devise, selon l'exposition devise *du sous-jacent*
-  (un ETF MSCI World coté en euros reste ≈ 72 % exposé au dollar).
-- **Allocation & exposition** — par classe d'actif, enveloppe, établissement, zone, devise et secteur
-  (ETF éclatés par transparence), concentration, carte des lignes.
-- **Dépenses** — par catégorie et par mois/année, carte de chaleur, principaux marchands, correction
-  manuelle des catégories (mémorisée).
-- **Vacances** — périodes (saisies ou détectées via les paiements en devise étrangère), coût par voyage,
-  par jour, par an, part des dépenses annuelles.
-- **Revenus & épargne** — revenus vs dépenses, épargne mensuelle, taux d'épargne, livrets.
-- **➕ Saisir une opération** — formulaire (compte, ticker, date, quantité, prix, devise, frais) et liste des saisies, avec suppression.
-- **Données & imports** — import historique unique, modèle CSV, édition des titres (ticker, expositions), journal, export.
+## Documentation
 
-## Méthodes de calcul
+| Document | For |
+|---|---|
+| [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | Using Meridian day to day: first import, accounts, monthly routine, every page |
+| [docs/AGENT_SETUP.md](docs/AGENT_SETUP.md) | An AI agent (or a helper) setting Meridian up for a new person |
+| [docs/FORMATS.md](docs/FORMATS.md) | Every supported export, column by column |
+| [docs/GUIDE_CSV.md](docs/GUIDE_CSV.md) | Where to download each export (French brokers/banks) |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Architecture, data model, adding an importer or a page, tests |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Fork & pull-request workflow |
 
-- Prix de revient au **PMP** (méthode fiscale française). Plus-value réalisée = produit de cession − PMP × quantité.
-- **Effet change** : F(t) = valeur EUR du panier de devises du sous-jacent. Avec `units = Σ coût / F(date d'achat)` :
-  `r_change = F(t)·units/coût − 1`, `r_sous-jacent = valeur / (F(t)·units) − 1` ; le terme croisé est le reste.
-- **TWR** : chaînage des rendements quotidiens hors flux ; **TRI** : taux actuariel des versements.
-- Dépenses : correction manuelle > règles (`config/categories.yaml`) > catégorie Boursorama > « À classer ».
-  Les virements internes, vers les livrets et vers les courtiers ne sont pas des dépenses.
+## Access, forks and contributions
 
-## Configuration
+The repository is private. To get access, open the repository link and ask the owner to add you
+(GitHub username). Collaborators have **read** access: you can clone and **fork**, but cannot push to
+`main`. Changes go through a pull request from your fork — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-- `config/settings.yaml` — noms/types des comptes, indice de référence, catégories exclues des vacances.
-- `config/categories.yaml` — taxonomie et règles de classement (expressions régulières).
-- `config/instruments.yaml` — corrections par ISIN (ticker, exposition devise, régions, secteurs) et alias de noms.
+## Privacy
 
-## Structure
+- `data/` (database, imports, personal rules) is git-ignored. Never commit exports: they contain names and
+  account numbers. Test fixtures in `tests/fixtures/` are anonymised.
+- Personal categorisation rules (names of landlords, employers…) live in `data/<profile>/regles.yaml`,
+  outside version control.
 
-```
-finmon/            moteur (imports, saisie, base, marché, calculs, graphes)
-  importers/       boursorama.py, traderepublic.py, binance.py, ibkr.py
-  manual.py        saisie manuelle et modèle CSV
-  analytics/       portfolio.py, budget.py, networth.py, allocation.py
-dashboard/         app Streamlit (app.py + views/)
-config/            réglages YAML
-docs/              guide des exports
-tests/             tests des calculs (pytest)
-data/              VOS DONNÉES — local uniquement, ignoré par git
-```
+## Legacy files
 
-Les anciens fichiers (`trade.py`, `pnl.py`, `app.py`…) sont conservés tels quels ; le nouveau code ne les utilise pas.
+`app.py`, `pnl.py`, `brokers.py`, `news.py`, `trade.py`, `plots.py`, `pipeline.py` and similar files at the
+repository root belong to an earlier prototype and are not used by Meridian.
 
-> finmon est un outil de suivi : il ne donne pas de conseil en investissement.
+## License
+
+MIT — see [LICENSE](LICENSE).

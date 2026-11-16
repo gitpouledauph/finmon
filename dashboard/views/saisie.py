@@ -21,7 +21,7 @@ MANUAL_TYPES = {"epargne_salariale"}
 KINDS = {"Buy": "buy", "Sell": "sell", "Dividend": "dividend", "Deposit": "deposit", "Withdrawal": "withdrawal",
          "Fee": "fee", "Interest": "interest", "Reward": "reward"}
 ACCOUNT_TYPES = {"Brokerage account": "cto", "PEA": "pea", "Crypto": "crypto", "Life insurance": "assurance_vie",
-                 "Employee savings (manual value)": "epargne_salariale"}
+                 "Employee savings (PEE / PERCO)": "epargne_salariale"}
 TYPE_LABEL = {"pea": "PEA", "cto": "Brokerage", "crypto": "Crypto", "assurance_vie": "Life insurance",
               "epargne_salariale": "Employee savings"}
 
@@ -34,99 +34,98 @@ def _n(x, dec=None):
 
 
 # ------------------------------------------------------------- account
-labels = {r.id: f"{r.name} · {TYPE_LABEL.get(r.type, r.type)}" for r in inv.itertuples()}
-c1, c2 = st.columns([2, 1])
-choice = c1.selectbox("Account", list(labels) + ["__new__"],
-                      format_func=lambda k: "New account…" if k == "__new__" else labels[k])
+if "tracking" not in accounts.columns:
+    accounts["tracking"] = None
+accounts["tracking"] = accounts["tracking"].fillna(accounts["type"].map(lambda t: "manual" if t in MANUAL_TYPES else "holdings"))
+inv = accounts[accounts["type"].isin(INV_TYPES)]
+TRACK = {"holdings": "Tracked holdings", "manual": "Manual value"}
+view_mode = st.segmented_control("Accounts", list(TRACK.values()), default="Tracked holdings",
+                                 label_visibility="collapsed", key="track_view") or "Tracked holdings"
+mode_key = "manual" if view_mode == "Manual value" else "holdings"
+pool = inv[inv["tracking"] == mode_key]
+labels = {r.id: f"{r.name} · {TYPE_LABEL.get(r.type, r.type)}" for r in pool.itertuples()}
+choice = st.selectbox("Account", list(labels) + ["__new__"],
+                      format_func=lambda k: "New account…" if k == "__new__" else labels[k], key=f"acc_{mode_key}")
 new_name, new_type = "", None
 if choice == "__new__":
-    new_name = c2.text_input("Name", placeholder="e.g. Fortuneo PEA")
-    new_type = ACCOUNT_TYPES[st.selectbox("Type", list(ACCOUNT_TYPES))]
-acc_type = new_type if choice == "__new__" else accounts.set_index("id").loc[choice, "type"]
+    with st.container(border=True):
+        n1, n2 = st.columns(2)
+        new_name = n1.text_input("Name", placeholder="e.g. Fortuneo PEA, Amundi PEE")
+        new_type = ACCOUNT_TYPES[n2.selectbox("Type", list(ACCOUNT_TYPES))]
+        track = st.radio("Tracking", ["holdings", "manual"], format_func=lambda k: {
+            "holdings": "Tracked holdings — securities, quantities and prices are followed line by line",
+            "manual": "Manual value — you enter the amount invested and the current value; nothing is tracked"}[k],
+            index=1 if mode_key == "manual" or new_type == "epargne_salariale" else 0)
+        if st.button("Create account", type="primary") and new_name.strip():
+            acc_id = ("manuel:" if track == "manual" else "manuel-inv:") + manual.slug(new_name)
+            db.upsert("accounts", pd.DataFrame([{"id": acc_id, "institution": new_name.strip(), "name": new_name.strip(),
+                                                 "type": new_type, "currency": "EUR", "tracking": track}]), mode="ignore")
+            invalidate()
+            st.success("Account created.")
+            st.rerun()
+    st.stop()
+acc_type = accounts.set_index("id").loc[choice, "type"]
 
 # ============================================================= manually valued account
-if acc_type in MANUAL_TYPES:
-    if choice == "__new__":
-        if st.button("Create account", type="primary") and new_name.strip():
-            acc_id = "manuel:" + manual.slug(new_name)
-            db.upsert("accounts", pd.DataFrame([{"id": acc_id, "institution": new_name.strip(), "name": new_name.strip(),
-                                                 "type": acc_type, "currency": "EUR"}]), mode="ignore")
-            invalidate()
-            st.rerun()
-        st.stop()
+if mode_key == "manual":
     contrib = db.read("SELECT * FROM manual_contributions WHERE account_id = ? ORDER BY date", [choice])
     vals = db.read("SELECT date, balance FROM balance_snapshots WHERE account_id = ? ORDER BY date", [choice])
+    contrib["date"] = pd.to_datetime(contrib["date"]) if not contrib.empty else contrib.get("date")
     value = float(vals["balance"].iloc[-1]) if not vals.empty else None
     invested = float(contrib["amount"].sum()) if not contrib.empty else None
     gain = value - invested if value is not None and invested else None
     k = st.columns(3)
     k[0].metric("Current value", eur(value) if value is not None else "—",
                 f"as of {pd.Timestamp(vals['date'].iloc[-1]):%d %b %Y}" if value is not None else None, delta_color="off")
-    k[1].metric("Invested", eur(invested) if invested is not None else "—",
-                f"{len(contrib)} contribution(s)" if invested is not None else "none entered", delta_color="off")
+    k[1].metric("Invested", eur(invested) if invested is not None else "—")
     k[2].metric("Gain", eur(gain, sign=True) if gain is not None else "—",
                 pct(gain / invested) if gain is not None and invested else None)
 
-    a, b_ = st.columns(2)
-    with a:
-        theme.section("Add contribution")
-        with st.form("contrib", clear_on_submit=True, border=False):
-            x1, x2, x3 = st.columns(3)
-            dc = x1.date_input("Date", value=date.today(), max_value=date.today(), format="DD/MM/YYYY")
-            ac = x2.number_input("Amount (€)", step=50.0, format="%.2f")
-            tc = x3.selectbox("Source", ["Profit-sharing", "Participation", "Employer match", "Personal", "Withdrawal"])
-            if st.form_submit_button("Add", type="primary") and ac:
-                amt = -abs(ac) if tc == "Withdrawal" else ac
+    theme.section("Update", "total invested to date + current value")
+    with st.form("manual_update", border=False):
+        x1, x2, x3, x4 = st.columns([1, 1.2, 1.2, 0.8], vertical_alignment="bottom")
+        du = x1.date_input("Date", value=date.today(), max_value=date.today(), format="DD/MM/YYYY")
+        inv_total = x2.number_input("Total invested (€)", min_value=0.0, step=100.0, format="%.2f",
+                                    value=float(invested or 0.0))
+        val_now = x3.number_input("Current value (€)", min_value=0.0, step=100.0, format="%.2f",
+                                  value=float(value or 0.0))
+        if x4.form_submit_button("Save", type="primary", width="stretch"):
+            before = float(contrib.loc[contrib["date"] <= pd.Timestamp(du), "amount"].sum()) if not contrib.empty else 0.0
+            delta = inv_total - before
+            if abs(delta) > 0.005:
                 db.upsert("manual_contributions", pd.DataFrame([{"id": uuid.uuid4().hex[:10], "account_id": choice,
-                                                                 "date": dc.isoformat(), "amount": amt, "label": tc}]))
-                invalidate()
-                st.rerun()
-    with b_:
-        theme.section("Update value")
-        with st.form("value", clear_on_submit=True, border=False):
-            y1, y2 = st.columns(2)
-            dv = y1.date_input("Date", value=date.today(), max_value=date.today(), format="DD/MM/YYYY")
-            vv = y2.number_input("Value (€)", min_value=0.0, step=100.0, format="%.2f")
-            if st.form_submit_button("Save", type="primary") and vv:
-                db.upsert("balance_snapshots", pd.DataFrame([{"account_id": choice, "date": dv.isoformat(),
-                                                              "balance": vv, "source": "manuel"}]), mode="replace")
-                invalidate()
-                st.rerun()
+                                                                 "date": du.isoformat(), "amount": delta,
+                                                                 "label": "Invested total update"}]))
+            if val_now > 0:
+                db.upsert("balance_snapshots", pd.DataFrame([{"account_id": choice, "date": du.isoformat(),
+                                                              "balance": val_now, "source": "manuel"}]), mode="replace")
+            invalidate()
+            st.rerun()
 
-    h1, h2 = st.columns(2)
-    with h1:
-        theme.section("Contributions", f"{len(contrib)}")
-        if not contrib.empty:
-            ed = st.data_editor(pd.DataFrame({"Delete": False, "id": contrib["id"], "Date": pd.to_datetime(contrib["date"]),
-                                              "Source": contrib["label"], "Amount": contrib["amount"]}),
-                                hide_index=True, width="stretch", key="contrib_ed", disabled=["id", "Date", "Source"],
-                                column_config={"id": None, "Date": st.column_config.DateColumn(format="DD/MM/YYYY"),
-                                               "Amount": st.column_config.NumberColumn(format="%+,.2f €")})
-            if st.button("Save changes", key="contrib_save"):
-                for r in ed.itertuples(index=False):
-                    if r.Delete:
-                        db.execute("DELETE FROM manual_contributions WHERE id = ?", [r.id])
-                    else:
-                        db.execute("UPDATE manual_contributions SET amount = ? WHERE id = ?", [float(r.Amount), r.id])
-                invalidate()
-                st.rerun()
-    with h2:
-        theme.section("Valuations", f"{len(vals)}")
-        if not vals.empty:
-            ev = st.data_editor(pd.DataFrame({"Delete": False, "Date": pd.to_datetime(vals["date"]), "Value": vals["balance"]}),
-                                hide_index=True, width="stretch", key="val_ed", disabled=["Date"],
-                                column_config={"Date": st.column_config.DateColumn(format="DD/MM/YYYY"),
-                                               "Value": st.column_config.NumberColumn(format="%,.2f €")})
-            if st.button("Save changes", key="val_save"):
-                for r in ev.itertuples(index=False):
-                    d = pd.Timestamp(r.Date).date().isoformat()
-                    if r.Delete:
-                        db.execute("DELETE FROM balance_snapshots WHERE account_id = ? AND date = ?", [choice, d])
-                    else:
-                        db.execute("UPDATE balance_snapshots SET balance = ? WHERE account_id = ? AND date = ?",
-                                   [float(r.Value), choice, d])
-                invalidate()
-                st.rerun()
+    theme.section("History")
+    hist = pd.DataFrame({"Date": pd.to_datetime(vals["date"]), "Value": vals["balance"]}) if not vals.empty else \
+        pd.DataFrame(columns=["Date", "Value"])
+    if not contrib.empty:
+        inv_by = contrib.groupby(contrib["date"].dt.normalize())["amount"].sum().cumsum()
+        all_d = sorted(set(hist["Date"]) | set(inv_by.index))
+        hist = pd.DataFrame({"Date": all_d}).merge(hist, on="Date", how="left")
+        hist["Invested"] = inv_by.reindex(all_d).ffill().values
+        hist["Value"] = hist["Value"].ffill()
+        hist["Gain"] = hist["Value"] - hist["Invested"]
+    if not hist.empty:
+        ed = st.data_editor(hist.assign(Delete=False).iloc[::-1], hide_index=True, width="stretch", key="hist_ed",
+                            disabled=[c for c in hist.columns],
+                            column_config={"Date": st.column_config.DateColumn(format="DD/MM/YYYY"),
+                                           "Value": st.column_config.NumberColumn(format="%,.2f €"),
+                                           "Invested": st.column_config.NumberColumn(format="%,.2f €"),
+                                           "Gain": st.column_config.NumberColumn(format="%+,.2f €")})
+        if st.button("Delete selected dates"):
+            for r in ed[ed["Delete"]].itertuples(index=False):
+                d = pd.Timestamp(r.Date).date().isoformat()
+                db.execute("DELETE FROM balance_snapshots WHERE account_id = ? AND date = ?", [choice, d])
+                db.execute("DELETE FROM manual_contributions WHERE account_id = ? AND date = ?", [choice, d])
+            invalidate()
+            st.rerun()
     st.stop()
 
 # ============================================================= broker account

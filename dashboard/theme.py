@@ -1,13 +1,13 @@
 """Meridian — visual layer: Inter typography, quiet surfaces, one accent."""
 import streamlit as st
 
-ACCENT = "#5b8cff"
+ACCENT = "#7d9bd6"
 
 CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-:root { --bg:#0a0c10; --panel:#11141a; --panel2:#151922; --line:#1e232d; --muted:#8b93a3; --ink:#e9ecf1;
-        --accent:#5b8cff; --good:#34c38f; --bad:#f06a6a; }
+:root { --bg:#0b0e14; --panel:#121620; --panel2:#161b26; --line:#1f2533; --muted:#8a93a6; --ink:#e6e9ef;
+        --accent:#7d9bd6; --gold:#c9a96e; --good:#4fb286; --bad:#e06c75; }
 html, body, .stApp, .stMarkdown, button, input, textarea, select, [data-testid="stMetricValue"] {
   font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif !important;
   font-feature-settings: 'tnum' 1, 'cv11' 1; }
@@ -16,7 +16,7 @@ html, body, .stApp, .stMarkdown, button, input, textarea, select, [data-testid="
 header[data-testid="stHeader"] { background: transparent; }
 
 /* ---------- sidebar ---------- */
-section[data-testid="stSidebar"] { background: #0d0f14; border-right: 1px solid var(--line); }
+section[data-testid="stSidebar"] { background: #0d1118; border-right: 1px solid var(--line); }
 section[data-testid="stSidebar"] .block-container, section[data-testid="stSidebar"] [data-testid="stSidebarContent"] { padding-top: .6rem; }
 [data-testid="stSidebarNav"] { padding-top: .2rem; }
 [data-testid="stSidebarHeader"] { padding: 1rem 1rem .4rem 1rem; }
@@ -26,7 +26,7 @@ section[data-testid="stSidebar"] .block-container, section[data-testid="stSideba
 [data-testid="stSidebarNav"] a { border-radius: 8px; margin: 1px 0; padding: .32rem .6rem; }
 [data-testid="stSidebarNav"] a span { color: #b9c0cc !important; font-size: .9rem; font-weight: 450; }
 [data-testid="stSidebarNav"] a:hover { background: #161a22; }
-[data-testid="stSidebarNav"] a[aria-current="page"] { background: rgba(91,140,255,.12); }
+[data-testid="stSidebarNav"] a[aria-current="page"] { background: rgba(125,155,214,.13); }
 [data-testid="stSidebarNav"] a[aria-current="page"] span { color: var(--ink) !important; font-weight: 600; }
 [data-testid="stSidebarNav"] a[aria-current="page"] [data-testid="stIconMaterial"] { color: var(--accent) !important; }
 [data-testid="stSidebarNav"] [data-testid="stIconMaterial"] { color: #7d8595 !important; }
@@ -44,7 +44,8 @@ h3 { font-size:.95rem !important; color:var(--ink); text-transform:none; margin-
 [data-testid="stCaptionContainer"] { color: var(--muted) !important; }
 
 /* ---------- cards ---------- */
-[data-testid="stMetric"] { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px 16px; }
+[data-testid="stMetric"] { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px 16px; }
+[data-testid="stMetricDelta"] svg { display:none; }
 [data-testid="stMetricLabel"] p { font-size:.68rem !important; text-transform:uppercase; letter-spacing:.08em;
   color:var(--muted) !important; font-weight:600; }
 [data-testid="stMetricValue"] { font-weight:600; font-size:1.42rem !important; letter-spacing:-.02em; }
@@ -60,8 +61,8 @@ hr { border-color: var(--line) !important; }
 .fm-eyebrow { text-transform:uppercase; letter-spacing:.09em; font-size:.68rem; color:var(--muted); font-weight:600; margin:0 0 .15rem 0; }
 .fm-hero { font-size:2.4rem; font-weight:650; letter-spacing:-.03em; line-height:1.1; color:var(--ink); }
 .fm-chip { display:inline-block; margin-top:.4rem; padding:.16rem .55rem; border-radius:999px; font-size:.8rem; font-weight:500; }
-.fm-chip.up { color:var(--good); background:rgba(52,195,143,.12); }
-.fm-chip.down { color:var(--bad); background:rgba(240,106,106,.12); }
+.fm-chip.up { color:var(--good); background:rgba(79,178,134,.12); }
+.fm-chip.down { color:var(--bad); background:rgba(224,108,117,.12); }
 .fm-sub { color:var(--muted); font-size:.8rem; margin-left:.5rem; }
 .fm-section { display:flex; align-items:baseline; justify-content:space-between; margin:1.2rem 0 .4rem 0;
   border-bottom:1px solid var(--line); padding-bottom:.35rem; }
@@ -76,9 +77,9 @@ hr { border-color: var(--line) !important; }
 
 LOGO = """<svg width="26" height="26" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
 <circle cx="16" cy="16" r="12" fill="none" stroke="#1e2633" stroke-width="5"/>
-<circle cx="16" cy="16" r="12" fill="none" stroke="#5b8cff" stroke-width="5" stroke-dasharray="48 100"
+<circle cx="16" cy="16" r="12" fill="none" stroke="#7d9bd6" stroke-width="5" stroke-dasharray="48 100"
  transform="rotate(-90 16 16)" stroke-linecap="round"/>
-<circle cx="16" cy="16" r="12" fill="none" stroke="#34c38f" stroke-width="5" stroke-dasharray="14 100"
+<circle cx="16" cy="16" r="12" fill="none" stroke="#c9a96e" stroke-width="5" stroke-dasharray="14 100"
  stroke-dashoffset="-52" transform="rotate(-90 16 16)" stroke-linecap="round"/></svg>"""
 
 

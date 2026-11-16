@@ -142,7 +142,7 @@ def download_df(df: pd.DataFrame, name: str, label: str = "Exporter (CSV)"):
 
 
 # ------------------------------------------------------------------ détails cliquables
-GOOD_TXT, BAD_TXT = "#3ccf7a", "#f0625d"
+GOOD_TXT, BAD_TXT = "#4fb286", "#e06c75"
 
 
 def signed_style(df: pd.DataFrame, cols: list[str]):

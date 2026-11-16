@@ -26,7 +26,7 @@ types = b.accounts.set_index("id")["type"]
 tx = b.tx[b.tx["account_id"].map(types).isin(["courant", "autre"])] if not b.tx.empty else b.tx
 g = budget.global_monthly(tx) if not tx.empty else pd.DataFrame()
 if not g.empty:
-    last_data = tx.loc[~tx["source_cat"].isin(["étalé", "ajustement", "loyer fixe"]), "date"].max()
+    last_data = budget.last_real_date(tx)
     g = g[g.index + pd.offsets.MonthEnd(0) <= last_data]
     g = g[g.index >= (g.index[g["salaire"] > 0].min() if (g["salaire"] > 0).any() else g.index.min())]
 avg_saving = float(g["economise"].mean()) if not g.empty else 1000.0
@@ -119,9 +119,9 @@ with tab_goals:
             dl = pd.Timestamp(gl.deadline)
             months = max(0, (dl.year - date.today().year) * 12 + dl.month - date.today().month)
         need = pj.required_monthly(have, gl.target, months, 0.04) if months is not None else None
-        color = "#34c38f" if prog >= 1 else charts.CAT[0]
+        color = "#4fb286" if prog >= 1 else charts.CAT[0]
         st.html(
-            f"<div style='background:#11141a;border:1px solid #1e232d;border-radius:12px;padding:14px 18px;margin:.4rem 0'>"
+            f"<div style='background:#121620;border:1px solid #1f2533;border-radius:12px;padding:14px 18px;margin:.4rem 0'>"
             f"<div style='display:flex;justify-content:space-between;align-items:baseline'>"
             f"<span style='font-weight:600;font-size:1rem'>{gl.name}</span>"
             f"<span style='color:#8b93a3;font-size:.8rem'>{SCOPES.get(gl.scope, gl.scope)}"

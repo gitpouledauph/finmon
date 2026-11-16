@@ -339,7 +339,8 @@ def global_ops(df: pd.DataFrame, part: str, deduct_refunds: bool = False) -> pd.
         refund = lab.str.match(r"^(AVOIR|ANNUL(ATION)? CARTE)\b") & (df["amount"] > 0)
         keep = card | (refund if deduct_refunds else False)
         offset = df["category"].isin(EXPENSE_OFFSETS)
-        return df[(keep & (df["cat_type"] == "expense") & (df["category"] != RENT) & ~offset) | offset]
+        smoothed = df["source_cat"] == "lissage"          # expense spread over several months
+        return df[(keep & (df["cat_type"] == "expense") & (df["category"] != RENT) & ~offset) | offset | smoothed]
     if part == "exceptionnel":
         return df[df["category"].isin(EXTRA_INCOME)]
     if part == "investi":
@@ -457,10 +458,21 @@ def apply_income_treatment(tx: pd.DataFrame, treat: pd.DataFrame) -> pd.DataFram
         elif tr["mode"] == "smooth":
             n = max(1, int(tr["months"] or 1))
             start = pd.Timestamp(f"{tr['start']}-01") if isinstance(tr["start"], str) and tr["start"] else r["month"]
+            expense = r["amount"] < 0
+            orig_cat = r["category"]
             df.at[i, "category"], df.at[i, "cat_type"] = IGNORED, "transfer"
             for k in range(n):
                 m = start + pd.DateOffset(months=k)
                 rows.append({"id": f"smooth-{r['id']}-{k}", "account_id": r["account_id"], "date": m,
-                             "label": f"{r['label']} ({k + 1}/{n})", "merchant": "LISSAGE", "amount": r["amount"] / n,
-                             "category": SMOOTHED, "source": "lissage", "source_cat": "étalé"})
+                             "label": f"{r['label']} ({k + 1}/{n})", "merchant": r.get("merchant") or "LISSAGE",
+                             "amount": r["amount"] / n,
+                             # expense keeps its category and stays in spending; income goes to smoothed income
+                             "category": orig_cat if expense else SMOOTHED, "source": "lissage",
+                             "source_cat": "lissage" if expense else "étalé"})
     return _synthetic(df, rows)
+
+
+def last_real_date(tx: pd.DataFrame):
+    """Date of the latest real bank transaction (ignores synthetic rows: fixed rent, smoothing, adjustments)."""
+    synth = tx["id"].astype(str).str.startswith(("spread-", "smooth-", "adj-", "loyer-fixe"))
+    return tx.loc[~synth, "date"].max()

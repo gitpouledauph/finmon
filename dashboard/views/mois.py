@@ -16,7 +16,7 @@ if tx.empty:
 
 types = b.accounts.set_index("id")["type"]
 tx = tx[tx["account_id"].map(types).isin(["courant", "autre"])]
-last_data = tx.loc[~tx["source_cat"].isin(["étalé", "ajustement", "loyer fixe"]), "date"].max()
+last_data = budget.last_real_date(tx)
 months = sorted((pd.Timestamp(m) for m in tx["month"].unique() if pd.Timestamp(m) <= last_data), reverse=True)
 default = next((i for i, m in enumerate(months) if m + pd.offsets.MonthEnd(0) <= last_data), 0)
 

@@ -10,8 +10,8 @@ address = "localhost"
 [theme]
 # Mode sombre par défaut (modifiable dans le menu ⋮ › Settings de Streamlit).
 base = "dark"
-primaryColor = "#3987e5"
-backgroundColor = "#0b0d12"
-secondaryBackgroundColor = "#151922"
-textColor = "#e8e9ed"
-borderColor = "#1f2430"
+primaryColor = "#4c6fb5"
+backgroundColor = "#0b0e14"
+secondaryBackgroundColor = "#161b26"
+textColor = "#e6e9ef"
+borderColor = "#1f2533"

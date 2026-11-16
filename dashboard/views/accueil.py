@@ -140,7 +140,7 @@ if pf:
                 delta_color="off")
 if not tx.empty:
     g = budget.global_monthly(tx)
-    last_data = tx.loc[~tx["source_cat"].isin(["étalé", "ajustement", "loyer fixe"]), "date"].max()
+    last_data = budget.last_real_date(tx)
     g = g[g.index + pd.offsets.MonthEnd(0) <= last_data]
     g = g[g.index >= (g.index[g["salaire"] > 0].min() if (g["salaire"] > 0).any() else g.index.min())]
     if not g.empty:

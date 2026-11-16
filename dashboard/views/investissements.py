@@ -97,9 +97,9 @@ g0 = view["total"] - view["invested"]
 lat = pf.positions[pf.positions["account_id"].isin(sel)].groupby("date")["latent"].sum().reindex(view.index).fillna(0.0)
 fig = go.Figure()
 fig.add_trace(go.Scatter(x=g0.index, y=g0.clip(lower=0), fill="tozeroy", mode="none",
-                         fillcolor="rgba(52,195,143,0.16)", showlegend=False, hoverinfo="skip"))
+                         fillcolor="rgba(79,178,134,0.14)", showlegend=False, hoverinfo="skip"))
 fig.add_trace(go.Scatter(x=g0.index, y=g0.clip(upper=0), fill="tozeroy", mode="none",
-                         fillcolor="rgba(240,106,106,0.16)", showlegend=False, hoverinfo="skip"))
+                         fillcolor="rgba(224,108,117,0.14)", showlegend=False, hoverinfo="skip"))
 fig.add_trace(go.Scatter(x=g0.index, y=g0, name="Total P&L", line=dict(color=charts.CAT[0], width=2),
                          hovertemplate="%{y:+,.0f} €<extra>Total P&L</extra>"))
 fig.add_trace(go.Scatter(x=lat.index, y=lat, name="Unrealized", line=dict(color=charts.INK_MUTED, width=1.4, dash="dot"),
@@ -125,7 +125,7 @@ if not cur.empty:
     fig.update_layout(barmode="relative", bargap=0.4, hovermode="closest")
     fig.update_yaxes(showgrid=False, ticksuffix="  ", tickfont=dict(color=charts.INK_MUTED))
     fig.update_xaxes(showgrid=True, gridcolor=charts.GRID, ticksuffix=" €", tickformat=",.0f", nticks=7,
-                     zeroline=True, zerolinecolor="#3a4252", tickfont=dict(color=charts.INK_MUTED))
+                     zeroline=True, zerolinecolor="#343c4d", tickfont=dict(color=charts.INK_MUTED))
     plot(fig, key="fxpos")
 
     # --------------------------------------------------------- positions

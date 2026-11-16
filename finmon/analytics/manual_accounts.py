@@ -10,13 +10,14 @@ from __future__ import annotations
 
 import pandas as pd
 
-MANUAL_TYPES = {"epargne_salariale"}
+MANUAL_TYPES = {"epargne_salariale"}   # always manual; any account with tracking = "manual" too
 
 
 def build(accounts: pd.DataFrame, snaps: pd.DataFrame, contribs: pd.DataFrame, days: pd.DatetimeIndex,
           today: pd.Timestamp) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Return (account frames, position frames, current rows) for manually valued accounts."""
-    acc = accounts[accounts["type"].isin(MANUAL_TYPES)]
+    tracking = accounts["tracking"] if "tracking" in accounts.columns else pd.Series(None, index=accounts.index)
+    acc = accounts[accounts["type"].isin(MANUAL_TYPES) | (tracking == "manual")]
     empty = pd.DataFrame()
     if acc.empty:
         return empty, empty, empty
@@ -28,6 +29,9 @@ def build(accounts: pd.DataFrame, snaps: pd.DataFrame, contribs: pd.DataFrame, d
         c = contribs[contribs["account_id"] == a.id] if not contribs.empty else contribs
         if s.empty and c.empty:
             continue
+        if not c.empty and not s.empty:
+            # valuations entered before any invested amount have no cost basis: ignore them
+            s = s[s["date"].dt.normalize() >= c["date"].min().normalize()]
         if c.empty:   # no contribution entered yet: the first value counts as paid in (gain 0 until known)
             c = pd.DataFrame({"account_id": [a.id], "date": [s["date"].iloc[0]], "amount": [float(s["balance"].iloc[0])]})
         starts = [x for x in (s["date"].min() if not s.empty else None, c["date"].min() if not c.empty else None) if x is not None]
